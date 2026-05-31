@@ -1,0 +1,25 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "แผนที่ EV ไทย",
+        "description": "ตั้งค่า TomTom API key และ entity ตำแหน่ง",
+        "data": {
+          "tomtom_api_key": "TomTom API Key",
+          "location_entity": "Entity ตำแหน่ง (เช่น person.thiti)",
+          "mapbox_token": "Mapbox Token (ไม่บังคับ)",
+          "radius": "รัศมีค้นหา (เมตร)"
+        }
+      }
+    },
+    "error": {
+      "invalid_api_key": "TomTom API key ไม่ถูกต้อง",
+      "entity_not_found": "ไม่พบ entity ตำแหน่งใน Home Assistant",
+      "entity_no_location": "Entity ตำแหน่งไม่มีข้อมูลละติจูด/ลองจิจูด",
+      "cannot_connect": "ไม่สามารถเชื่อมต่อ TomTom API"
+    },
+    "abort": {
+      "already_configured": "ตั้งค่าแผนที่ EV ไทยแล้ว"
+    }
+  }
+}

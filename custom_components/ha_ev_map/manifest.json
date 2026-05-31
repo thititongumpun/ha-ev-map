@@ -1,0 +1,11 @@
+{
+  "domain": "ha_ev_map",
+  "name": "EV Map",
+  "version": "0.1.0",
+  "documentation": "https://github.com/thititongumpun/ha-th-ev-map",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": ["@thititongumpun"],
+  "iot_class": "cloud_polling",
+  "config_flow": true
+}

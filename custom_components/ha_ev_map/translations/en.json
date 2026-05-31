@@ -1,0 +1,25 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EV Map",
+        "description": "Configure the TomTom API key and location entity.",
+        "data": {
+          "tomtom_api_key": "TomTom API Key",
+          "location_entity": "Location Entity (e.g. person.thiti)",
+          "mapbox_token": "Mapbox Token (optional)",
+          "radius": "Search Radius (meters)"
+        }
+      }
+    },
+    "error": {
+      "invalid_api_key": "Invalid TomTom API key",
+      "entity_not_found": "Location entity not found in Home Assistant",
+      "entity_no_location": "Location entity has no latitude/longitude attributes",
+      "cannot_connect": "Cannot connect to TomTom API"
+    },
+    "abort": {
+      "already_configured": "EV Map is already configured"
+    }
+  }
+}

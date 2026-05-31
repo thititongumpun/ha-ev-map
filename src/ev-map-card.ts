@@ -40,11 +40,30 @@ const STATUS_LABEL: Record<string, string> = {
 
 const THAILAND_CENTER: [number, number] = [13.736717, 100.523186]
 
-function injectLeafletCSS() {
-  if (document.getElementById('ev-map-leaflet-css')) return
+const CARD_CSS = `
+  /* HA sets max-width:100% on all img — this breaks Leaflet 256px tiles */
+  .ev-map-wrap .leaflet-tile { max-width: none !important; max-height: none !important; }
+  .ev-map-wrap .leaflet-container { background: #0f172a; }
+
+  /* Dark popup theme */
+  .ev-map-popup .leaflet-popup-content-wrapper {
+    background: #0f172a;
+    color: #e2e8f0;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  }
+  .ev-map-popup .leaflet-popup-content { margin: 12px 14px; }
+  .ev-map-popup .leaflet-popup-tip { background: #0f172a; }
+  .ev-map-popup .leaflet-popup-close-button { color: #94a3b8 !important; }
+  .ev-map-popup .leaflet-popup-close-button:hover { color: #e2e8f0 !important; }
+`
+
+function injectCSS() {
+  if (document.getElementById('ev-map-styles')) return
   const style = document.createElement('style')
-  style.id = 'ev-map-leaflet-css'
-  style.textContent = leafletCss
+  style.id = 'ev-map-styles'
+  style.textContent = leafletCss + CARD_CSS
   document.head.appendChild(style)
 }
 
@@ -70,7 +89,7 @@ class EVMapCard extends HTMLElement {
   }
 
   connectedCallback() {
-    injectLeafletCSS()
+    injectCSS()
     if (this._hass && !this._initialized) {
       this._initializeMap()
     }
@@ -92,18 +111,22 @@ class EVMapCard extends HTMLElement {
     if (this._initialized) return
     this._initialized = true
 
+    const height = Number(this._config.height ?? 400)
+
     this.style.display = 'block'
-    this.style.width = '100%'
-    this.style.height = '500px'
+    this.style.overflow = 'hidden'
+    this.style.borderRadius = 'var(--ha-card-border-radius, 12px)'
 
-    const container = document.createElement('div')
-    container.style.width = '100%'
-    container.style.height = '100%'
-    this.appendChild(container)
+    // Wrapper carries the scoped CSS class so our selectors don't bleed globally
+    const wrap = document.createElement('div')
+    wrap.className = 'ev-map-wrap'
+    wrap.style.cssText = `width:100%;height:${height}px;position:relative;`
+    this.appendChild(wrap)
 
-    this._map = L.map(container, {
+    this._map = L.map(wrap, {
       center: THAILAND_CENTER,
       zoom: 10,
+      zoomControl: true,
     })
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -115,7 +138,14 @@ class EVMapCard extends HTMLElement {
 
     this._stationLayer = L.layerGroup().addTo(this._map)
 
-    this._fetchAndUpdate()
+    // Double-RAF: first frame adds element to DOM, second frame has computed layout
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        this._map?.invalidateSize()
+        this._fetchAndUpdate()
+      })
+    })
+
     this._refreshInterval = setInterval(() => this._fetchAndUpdate(), 30_000)
   }
 
@@ -125,7 +155,7 @@ class EVMapCard extends HTMLElement {
       const data: StationsResponse = await this._hass.callApi('GET', 'ha_ev_map/stations')
       this._renderStations(data)
     } catch {
-      // Map stays visible even if the request fails
+      // map stays visible if request fails
     }
   }
 
@@ -136,22 +166,23 @@ class EVMapCard extends HTMLElement {
 
     const { latitude, longitude } = data.center
 
-    const locationIcon = L.divIcon({
-      html: `<div style="width:16px;height:16px;background:#3b82f6;border-radius:50%;border:2px solid white;box-shadow:0 0 10px #3b82f680;"></div>`,
-      className: '',
-      iconSize: [16, 16],
-      iconAnchor: [8, 8],
-    })
-
     if (this._locationMarker) {
       this._locationMarker.setLatLng([latitude, longitude])
     } else {
+      const locationIcon = L.divIcon({
+        html: `<div style="width:16px;height:16px;background:#3b82f6;border-radius:50%;border:2px solid white;box-shadow:0 0 10px #3b82f680;"></div>`,
+        className: '',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      })
       this._locationMarker = L.marker([latitude, longitude], {
         icon: locationIcon,
         zIndexOffset: 1000,
       })
         .addTo(this._map)
-        .bindPopup('<strong>Your Location</strong>')
+        .bindPopup('<strong style="color:#f1f5f9;">Your Location</strong>', {
+          className: 'ev-map-popup',
+        })
     }
 
     if (!this._centeredOnLocation) {
@@ -173,31 +204,30 @@ class EVMapCard extends HTMLElement {
           ? station.connectors
               .map(
                 (c) =>
-                  `<span style="display:inline-block;padding:2px 6px;margin:2px;background:#1e293b;border-radius:4px;font-size:11px;color:#e2e8f0;">${c.type}${c.powerKW > 0 ? ` ${c.powerKW} kW` : ''}</span>`,
+                  `<span style="display:inline-block;padding:2px 6px;margin:2px;background:#1e293b;border-radius:4px;font-size:11px;color:#e2e8f0;">${c.type}${c.powerKW > 0 ? ` ${c.powerKW} kW` : ''}</span>`,
               )
               .join('')
           : '<span style="color:#64748b;font-size:11px;">No connector data</span>'
 
       const popupHtml = `
-        <div style="font-family:sans-serif;color:#e2e8f0;min-width:220px;">
-          <h3 style="margin:0 0 4px;font-size:14px;font-weight:600;color:#f1f5f9;">${station.name}</h3>
-          <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">${station.address}</p>
-          <div style="margin-bottom:8px;font-size:12px;display:flex;gap:8px;flex-wrap:wrap;">
+        <div style="font-family:sans-serif;min-width:200px;">
+          <h3 style="margin:0 0 4px;font-size:13px;font-weight:600;color:#f1f5f9;">${station.name}</h3>
+          <p style="margin:0 0 8px;font-size:11px;color:#94a3b8;line-height:1.4;">${station.address}</p>
+          <div style="margin-bottom:8px;font-size:11px;display:flex;gap:8px;flex-wrap:wrap;">
             <span><span style="color:#64748b;">Status: </span>${STATUS_LABEL[station.status] ?? 'Unknown'}</span>
-            <span style="color:#64748b;">${station.distanceKm} km</span>
+            <span style="color:#64748b;">${station.distanceKm} km</span>
           </div>
           <div style="display:flex;flex-wrap:wrap;">${connectorHtml}</div>
-        </div>
-      `
+        </div>`
 
       L.marker([station.lat, station.lon], { icon })
-        .bindPopup(popupHtml, { maxWidth: 300 })
+        .bindPopup(popupHtml, { maxWidth: 280, className: 'ev-map-popup' })
         .addTo(this._stationLayer!)
     }
   }
 
   getCardSize() {
-    return 6
+    return Math.ceil(Number(this._config.height ?? 400) / 50)
   }
 }
 

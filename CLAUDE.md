@@ -2,96 +2,81 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-@AGENTS.md
-
 ## Commands
 
 ```bash
-yarn dev        # start dev server (localhost:3000)
-yarn build      # production build + type check
-yarn start      # run production build
-yarn lint       # ESLint
-yarn tsc --noEmit  # type check only
+yarn build      # bundle src/ev-map-card.ts → custom_components/ha_ev_map/www/ev-map-card.js
+yarn dev        # vite dev server (for card development only)
 ```
 
-## Environment Variables
-
-Required in `.env.local`:
-
-```
-TOMTOM_API_KEY=...              # server-side only — EV station search proxy
-```
-
-`TOMTOM_API_KEY` must never be exposed to the browser. It is accessed only in `app/api/stations/route.ts`.
-
-Optional Home Assistant-backed current location:
-
-```
-HOME_ASSISTANT_URL=http://homeassistant.local:8123
-HOME_ASSISTANT_TOKEN=...                 # long-lived access token
-HOME_ASSISTANT_LOCATION_ENTITY=person.thiti
-```
-
-These are server-side only. `HOME_ASSISTANT_LOCATION_ENTITY` can be a `person.*` or `device_tracker.*` entity with `latitude` and `longitude` attributes.
+No test framework is configured. Before submitting changes run `yarn build` and confirm it exits cleanly.
 
 ## Architecture
 
-**Purpose:** Next.js web app embedded as an iframe panel in Home Assistant (`panel_iframe` in `configuration.yaml`). Shows EV charging stations in Thailand on a MapCN / MapLibre dark map.
+This is a HACS `integration`-type repository. It has two parts that ship together:
+
+1. **Python HA integration** (`custom_components/ha_ev_map/`) — installed by HACS into Home Assistant, exposes an authenticated REST endpoint, and registers the card JS as a static asset.
+2. **Lovelace card** (`src/ev-map-card.ts`) — TypeScript custom element bundled by Vite into `custom_components/ha_ev_map/www/ev-map-card.js` and served by HA.
 
 ### Data flow
 
 ```
-Browser (HA iframe)
-  └─ EVMap.tsx (client)
-       ├─ fetches GET /api/stations?bbox&connector  (on map move + filter change)
-       └─ renders MapCN / MapLibre markers + bottom sheet
+Lovelace dashboard
+  └─ <ev-map-card>  (custom element, Leaflet map)
+       └─ hass.callApi('GET', 'ha_ev_map/stations')   ← authenticated via HA frontend
 
-app/api/stations/route.ts  (Next.js API route)
-  └─ calls lib/tomtom.ts → TomTom nearbySearch API (server-side, key hidden)
-       └─ filters by connector type server-side
-       └─ returns EVStation[]
+Home Assistant HTTP layer
+  └─ EVMapStationsView  (custom_components/ha_ev_map/http.py)
+       ├─ reads location_entity from hass.states (lat/lon)
+       └─ calls TomTom nearbySearch API  (api.py)
+            └─ normalises → EVStation[]  (id, name, address, lat, lon, connectors, distanceKm)
 ```
+
+The TomTom API key never reaches the browser — it lives in the HA config entry (stored by `config_flow.py`).
 
 ### Key files
 
 | File | Role |
 |---|---|
-| `app/api/stations/route.ts` | API proxy — validates bbox params, filters by connector, calls TomTom |
-| `lib/tomtom.ts` | TomTom nearbySearch wrapper — types match real API response exactly |
-| `types/station.ts` | Shared types: `EVStation`, `Connector`, `ConnectorType`, `AvailabilityStatus` |
-| `components/EVMap.tsx` | `'use client'` — MapCN map composition, station markers, location pin |
-| `components/ui/map.tsx` | MapCN shadcn component built on MapLibre GL |
-| `components/FilterBar.tsx` | Floating chip bar — connector filter + locate button |
-| `components/StationBottomSheet.tsx` | Slide-up station detail panel |
-| `components/EVMapWrapper.tsx` | `'use client'` wrapper that dynamic-imports `EVMap` with `ssr: false` |
+| `custom_components/ha_ev_map/const.py` | `DOMAIN`, config key constants, `DEFAULT_RADIUS` |
+| `custom_components/ha_ev_map/api.py` | `search_ev_stations_nearby()` — async TomTom wrapper, haversine distance, connector normalisation |
+| `custom_components/ha_ev_map/http.py` | `EVMapStationsView` at `/api/ha_ev_map/stations` |
+| `custom_components/ha_ev_map/__init__.py` | `async_setup` registers static path `/ha_ev_map/ev-map-card.js`; `async_setup_entry` registers the HTTP view |
+| `custom_components/ha_ev_map/config_flow.py` | UI config flow — validates location entity (lat/lon), validates TomTom key with a live test call |
+| `src/ev-map-card.ts` | Lovelace card source — Leaflet map, station markers, popup details, 30 s auto-refresh |
+| `vite.config.ts` | Bundles card as IIFE to `custom_components/ha_ev_map/www/ev-map-card.js`; `publicDir: false` |
 
 ### Important constraints
 
-- `EVMap` must be dynamically imported with `ssr: false` — it uses browser APIs (MapLibre GL, `navigator.geolocation`). The wrapper `EVMapWrapper.tsx` handles this. Next.js 16 does not allow `ssr: false` in Server Components.
-- `dynamic()` with `ssr: false` can only be called inside a Client Component (`'use client'`).
-- TomTom `nearbySearch` does not support connector filtering via query text — filtering happens after fetch in the API route by matching `connector.type`.
-- TomTom `nearbySearch` does not return real-time availability — all station statuses are `'unknown'`.
-- Connector type values from the API are plain strings like `"IEC62196Type2Outlet"`, `"IEC62196Type2CCS"`, `"Chademo"` — mapped in `lib/tomtom.ts:toConnectorType()`.
+- **Connector normalisation** happens in `api.py:_to_connector_type()`. TomTom returns raw strings like `"IEC62196Type2CCS"`, `"Chademo"` — mapped to `"CCS"`, `"CHAdeMO"`, `"GBT"`, `"Type2"`.
+- **TomTom does not return real-time availability** — all station statuses are `"unknown"` (teal markers).
+- **Stations without `chargingPark.connectors`** are filtered out in `api.py:_normalise()`.
+- **HA auth**: the card calls `hass.callApi(...)` which handles bearer tokens automatically. `EVMapStationsView` has `requires_auth = True`.
+- **Static path** is registered in `async_setup` (not `async_setup_entry`) so the JS is served even before the integration is configured.
 
 ### Marker colours
 
-| Colour | Status |
+| Colour | Meaning |
 |---|---|
 | `#22c55e` green | available |
 | `#eab308` yellow | busy |
 | `#ef4444` red | offline |
-| `#14b8a6` teal | unknown (no live data from TomTom) |
-| `#3b82f6` blue (pulsing) | current user location — always z-index 10 |
+| `#14b8a6` teal | unknown (all TomTom stations) |
+| `#3b82f6` blue | HA location entity marker (z-index 1000) |
 
-### Home Assistant integration
+### HA installation
 
-```yaml
-# configuration.yaml
-panel_iframe:
-  ev-map:                          # key MUST contain a hyphen (HA requirement)
-    title: EV Map
-    url: http://<server-ip>:3000
-    icon: mdi:ev-station
+After HACS installs the integration, add the card resource in **Settings → Dashboards → Resources**:
+
+```
+URL:  /ha_ev_map/ev-map-card.js
+Type: JavaScript Module
 ```
 
-Geolocation inside the HA iframe requires both HA and the Next.js app to be on the same protocol (both HTTP or both HTTPS). Geolocation fails silently — the map still loads without the location pin.
+Lovelace card config:
+
+```yaml
+type: custom:ev-map-card
+```
+
+Config flow fields: `tomtom_api_key` (required), `location_entity` e.g. `person.thiti` (required), `mapbox_token` (optional, unused currently), `radius` in metres (default 5000).

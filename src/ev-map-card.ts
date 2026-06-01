@@ -43,7 +43,22 @@ const THAILAND_CENTER: [number, number] = [13.736717, 100.523186]
 const CARD_CSS = `
   /* HA sets max-width:100% on all img — this breaks Leaflet 256px tiles */
   .ev-map-wrap .leaflet-tile { max-width: none !important; max-height: none !important; }
-  .ev-map-wrap .leaflet-container { background: #0f172a; }
+  .ev-map-wrap {
+    width: 100%;
+    min-width: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+  .ev-map-wrap .leaflet-container {
+    width: 100% !important;
+    height: 100% !important;
+    background: #0f172a;
+  }
+  .ev-map-container {
+    width: 100%;
+    min-width: 100%;
+    height: 100%;
+  }
 
   /* Dark popup theme */
   .ev-map-popup .leaflet-popup-content-wrapper {
@@ -74,6 +89,11 @@ class EVMapCard extends HTMLElement {
   private _stationLayer: L.LayerGroup | null = null
   private _locationMarker: L.Marker | null = null
   private _refreshInterval: ReturnType<typeof setInterval> | null = null
+  private _resizeObserver: ResizeObserver | null = null
+  private _firstRenderFrame: number | null = null
+  private _delayedInvalidateTimer: ReturnType<typeof setTimeout> | null = null
+  private _wrap: HTMLDivElement | null = null
+  private _mapContainer: HTMLDivElement | null = null
   private _initialized = false
   private _centeredOnLocation = false
 
@@ -85,6 +105,8 @@ class EVMapCard extends HTMLElement {
     this._hass = hass
     if (!this._initialized && this.isConnected) {
       this._initializeMap()
+    } else if (this._map) {
+      this._invalidateMapSize('hass update')
     }
   }
 
@@ -100,30 +122,53 @@ class EVMapCard extends HTMLElement {
       clearInterval(this._refreshInterval)
       this._refreshInterval = null
     }
+    if (this._firstRenderFrame !== null) {
+      cancelAnimationFrame(this._firstRenderFrame)
+      this._firstRenderFrame = null
+    }
+    if (this._delayedInvalidateTimer !== null) {
+      clearTimeout(this._delayedInvalidateTimer)
+      this._delayedInvalidateTimer = null
+    }
+    this._resizeObserver?.disconnect()
+    this._resizeObserver = null
     this._map?.remove()
     this._map = null
+    this._stationLayer = null
     this._locationMarker = null
+    this._wrap = null
+    this._mapContainer = null
     this._initialized = false
     this._centeredOnLocation = false
+    this.textContent = ''
   }
 
   private _initializeMap() {
-    if (this._initialized) return
+    if (this._initialized || this._map) return
     this._initialized = true
 
     const height = Number(this._config.height ?? 400)
 
     this.style.display = 'block'
+    this.style.width = '100%'
+    this.style.minWidth = '100%'
     this.style.overflow = 'hidden'
     this.style.borderRadius = 'var(--ha-card-border-radius, 12px)'
 
     // Wrapper carries the scoped CSS class so our selectors don't bleed globally
     const wrap = document.createElement('div')
     wrap.className = 'ev-map-wrap'
-    wrap.style.cssText = `width:100%;height:${height}px;position:relative;`
+    wrap.style.cssText = `width:100%;min-width:100%;height:${height}px;position:relative;overflow:hidden;`
+
+    const mapContainer = document.createElement('div')
+    mapContainer.className = 'ev-map-container'
+    mapContainer.style.cssText = 'width:100%;min-width:100%;height:100%;'
+    wrap.appendChild(mapContainer)
     this.appendChild(wrap)
 
-    this._map = L.map(wrap, {
+    this._wrap = wrap
+    this._mapContainer = mapContainer
+    this._map = L.map(mapContainer, {
       center: THAILAND_CENTER,
       zoom: 10,
       zoomControl: true,
@@ -138,15 +183,46 @@ class EVMapCard extends HTMLElement {
 
     this._stationLayer = L.layerGroup().addTo(this._map)
 
-    // Double-RAF: first frame adds element to DOM, second frame has computed layout
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        this._map?.invalidateSize()
-        this._fetchAndUpdate()
-      })
+    this._resizeObserver = new ResizeObserver(() => {
+      this._invalidateMapSize('resize observer')
+    })
+    this._resizeObserver.observe(wrap)
+
+    this._invalidateMapSize('after map creation')
+
+    this._firstRenderFrame = requestAnimationFrame(() => {
+      this._firstRenderFrame = null
+      this._invalidateMapSize('first render frame')
+      this._fetchAndUpdate()
     })
 
+    this._delayedInvalidateTimer = setTimeout(() => {
+      this._delayedInvalidateTimer = null
+      this._invalidateMapSize('300ms delayed render')
+    }, 300)
+
     this._refreshInterval = setInterval(() => this._fetchAndUpdate(), 30_000)
+  }
+
+  private _invalidateMapSize(reason: string) {
+    if (!this._map) return
+    this._logMapSize(`before invalidateSize (${reason})`)
+    this._map.invalidateSize(true)
+    console.debug('[ev-map-card] invalidateSize()', { reason })
+    this._logMapSize(`after invalidateSize (${reason})`)
+  }
+
+  private _logMapSize(reason: string) {
+    const wrapperRect = this._wrap?.getBoundingClientRect()
+    const mapRect = this._mapContainer?.getBoundingClientRect()
+
+    console.debug('[ev-map-card] map size', {
+      reason,
+      wrapper: wrapperRect
+        ? { width: wrapperRect.width, height: wrapperRect.height }
+        : { width: 0, height: 0 },
+      mapContainer: mapRect ? { width: mapRect.width, height: mapRect.height } : { width: 0, height: 0 },
+    })
   }
 
   private async _fetchAndUpdate() {

@@ -240,6 +240,42 @@ class EVMapCard extends HTMLElement {
     return DEFAULT_ASPECT_RATIO.replace(':', ' / ')
   }
 
+  private _getAspectRatioValue() {
+    const value = String(this._config.aspect_ratio ?? DEFAULT_ASPECT_RATIO).trim()
+    const [width, height] = value.split(':').map(Number)
+
+    if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+      return width / height
+    }
+
+    return 16 / 9
+  }
+
+  private _syncMapContainerSize(reason: string) {
+    if (!this._wrap || !this._mapContainer) return
+
+    const hostRect = this.getBoundingClientRect()
+    const parentRect = this.parentElement?.getBoundingClientRect()
+    const cardRect = this._wrap.parentElement?.getBoundingClientRect()
+    const width = Math.max(hostRect.width, parentRect?.width ?? 0, cardRect?.width ?? 0)
+
+    if (width <= 0) return
+
+    const configuredHeight = this._getConfiguredHeight()
+    const height = configuredHeight ?? Math.max(240, width / this._getAspectRatioValue())
+
+    this.style.width = '100%'
+    this.style.minWidth = '100%'
+    this._wrap.style.width = `${width}px`
+    this._wrap.style.minWidth = '100%'
+    this._wrap.style.height = `${height}px`
+    this._mapContainer.style.width = `${width}px`
+    this._mapContainer.style.minWidth = '100%'
+    this._mapContainer.style.height = `${height}px`
+
+    console.debug('[ev-map-card] synced container size', { reason, width, height })
+  }
+
   private _scheduleMapInitialize(attempt = 0) {
     if (this._initialized || this._map) return
     this._updateCardLayout()
@@ -251,10 +287,11 @@ class EVMapCard extends HTMLElement {
       this._initializeFrame = null
       if (this._initialized || this._map || !this._wrap) return
 
-      const rect = this._wrap.getBoundingClientRect()
+      this._syncMapContainerSize(`before map init attempt ${attempt + 1}`)
+      const rect = this._mapContainer?.getBoundingClientRect()
       this._logMapSize(`before map init attempt ${attempt + 1}`)
 
-      if ((rect.width === 0 || rect.height === 0) && attempt < 60) {
+      if ((!rect || rect.width <= 256 || rect.height <= 0) && attempt < 60) {
         this._scheduleMapInitialize(attempt + 1)
         return
       }
@@ -266,6 +303,7 @@ class EVMapCard extends HTMLElement {
   private _initializeMap() {
     if (this._initialized || this._map || !this._wrap || !this._mapContainer) return
     this._initialized = true
+    this._syncMapContainerSize('initialize map')
 
     this._map = L.map(this._mapContainer, {
       center: THAILAND_CENTER,
@@ -283,9 +321,14 @@ class EVMapCard extends HTMLElement {
     this._stationLayer = L.layerGroup().addTo(this._map)
 
     this._resizeObserver = new ResizeObserver(() => {
+      this._syncMapContainerSize('resize observer')
       this._invalidateMapSize('resize observer')
     })
     this._resizeObserver.observe(this._wrap)
+    this._resizeObserver.observe(this)
+    if (this.parentElement) {
+      this._resizeObserver.observe(this.parentElement)
+    }
 
     this._invalidateMapSize('after map creation')
 
@@ -305,6 +348,7 @@ class EVMapCard extends HTMLElement {
 
   private _invalidateMapSize(reason: string) {
     if (!this._map) return
+    this._syncMapContainerSize(reason)
     this._logMapSize(`before invalidateSize (${reason})`)
     this._map.invalidateSize(true)
     console.debug('[ev-map-card] invalidateSize()', { reason })

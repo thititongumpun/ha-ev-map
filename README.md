@@ -49,6 +49,17 @@ Add the card to any Lovelace dashboard:
 
 ```yaml
 type: custom:ev-map-card
+aspect_ratio: "16:9"
+```
+
+For Home Assistant Sections dashboards, use auto rows so the card height is taken from the responsive map frame:
+
+```yaml
+type: custom:ev-map-card
+aspect_ratio: "16:9"
+grid_options:
+  columns: full
+  rows: auto
 ```
 
 The card:

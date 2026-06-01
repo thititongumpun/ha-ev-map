@@ -39,8 +39,23 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 const THAILAND_CENTER: [number, number] = [13.736717, 100.523186]
+const DEFAULT_ASPECT_RATIO = '16:9'
 
 const CARD_CSS = `
+  :host {
+    display: block;
+    width: 100%;
+    min-width: 100%;
+    box-sizing: border-box;
+  }
+  ha-card {
+    display: block;
+    width: 100%;
+    min-width: 100%;
+    overflow: hidden;
+    border-radius: var(--ha-card-border-radius, 12px);
+  }
+
   /* HA sets max-width:100% on all img — this breaks Leaflet 256px tiles */
   .ev-map-wrap .leaflet-tile { max-width: none !important; max-height: none !important; }
   .ev-map-wrap {
@@ -55,6 +70,8 @@ const CARD_CSS = `
     background: #0f172a;
   }
   .ev-map-container {
+    position: absolute;
+    inset: 0;
     width: 100%;
     min-width: 100%;
     height: 100%;
@@ -74,15 +91,8 @@ const CARD_CSS = `
   .ev-map-popup .leaflet-popup-close-button:hover { color: #e2e8f0 !important; }
 `
 
-function injectCSS() {
-  if (document.getElementById('ev-map-styles')) return
-  const style = document.createElement('style')
-  style.id = 'ev-map-styles'
-  style.textContent = leafletCss + CARD_CSS
-  document.head.appendChild(style)
-}
-
 class EVMapCard extends HTMLElement {
+  private _root: ShadowRoot
   private _hass: any = null
   private _config: Record<string, unknown> = {}
   private _map: L.Map | null = null
@@ -92,28 +102,40 @@ class EVMapCard extends HTMLElement {
   private _resizeObserver: ResizeObserver | null = null
   private _firstRenderFrame: number | null = null
   private _delayedInvalidateTimer: ReturnType<typeof setTimeout> | null = null
+  private _initializeFrame: number | null = null
   private _wrap: HTMLDivElement | null = null
   private _mapContainer: HTMLDivElement | null = null
   private _initialized = false
   private _centeredOnLocation = false
 
+  constructor() {
+    super()
+    this._root = this.attachShadow({ mode: 'open' })
+  }
+
   setConfig(config: Record<string, unknown>) {
     this._config = config
+    this._updateCardLayout()
+    if (this._map) {
+      this._invalidateMapSize('config update')
+    } else if (this._hass && this.isConnected) {
+      this._scheduleMapInitialize()
+    }
   }
 
   set hass(hass: any) {
     this._hass = hass
     if (!this._initialized && this.isConnected) {
-      this._initializeMap()
+      this._scheduleMapInitialize()
     } else if (this._map) {
       this._invalidateMapSize('hass update')
     }
   }
 
   connectedCallback() {
-    injectCSS()
+    this._updateCardLayout()
     if (this._hass && !this._initialized) {
-      this._initializeMap()
+      this._scheduleMapInitialize()
     }
   }
 
@@ -130,6 +152,10 @@ class EVMapCard extends HTMLElement {
       clearTimeout(this._delayedInvalidateTimer)
       this._delayedInvalidateTimer = null
     }
+    if (this._initializeFrame !== null) {
+      cancelAnimationFrame(this._initializeFrame)
+      this._initializeFrame = null
+    }
     this._resizeObserver?.disconnect()
     this._resizeObserver = null
     this._map?.remove()
@@ -140,35 +166,108 @@ class EVMapCard extends HTMLElement {
     this._mapContainer = null
     this._initialized = false
     this._centeredOnLocation = false
-    this.textContent = ''
+    this._root.replaceChildren()
   }
 
-  private _initializeMap() {
-    if (this._initialized || this._map) return
-    this._initialized = true
-
-    const height = Number(this._config.height ?? 400)
-
+  private _updateCardLayout() {
     this.style.display = 'block'
     this.style.width = '100%'
     this.style.minWidth = '100%'
-    this.style.overflow = 'hidden'
-    this.style.borderRadius = 'var(--ha-card-border-radius, 12px)'
+    this.style.boxSizing = 'border-box'
 
-    // Wrapper carries the scoped CSS class so our selectors don't bleed globally
-    const wrap = document.createElement('div')
-    wrap.className = 'ev-map-wrap'
-    wrap.style.cssText = `width:100%;min-width:100%;height:${height}px;position:relative;overflow:hidden;`
+    if (!this._wrap || !this._mapContainer) {
+      const style = document.createElement('style')
+      style.textContent = leafletCss + CARD_CSS
 
-    const mapContainer = document.createElement('div')
-    mapContainer.className = 'ev-map-container'
-    mapContainer.style.cssText = 'width:100%;min-width:100%;height:100%;'
-    wrap.appendChild(mapContainer)
-    this.appendChild(wrap)
+      const card = document.createElement('ha-card')
+      card.style.width = '100%'
+      card.style.minWidth = '100%'
 
-    this._wrap = wrap
-    this._mapContainer = mapContainer
-    this._map = L.map(mapContainer, {
+      const wrap = document.createElement('div')
+      wrap.className = 'ev-map-wrap'
+
+      const mapContainer = document.createElement('div')
+      mapContainer.className = 'ev-map-container'
+      wrap.appendChild(mapContainer)
+      card.appendChild(wrap)
+      this._root.replaceChildren(style, card)
+
+      this._wrap = wrap
+      this._mapContainer = mapContainer
+    }
+
+    this._applyWrapperSize()
+  }
+
+  private _applyWrapperSize() {
+    if (!this._wrap) return
+
+    const height = this._getConfiguredHeight()
+    const aspectRatio = this._getAspectRatio()
+
+    this._wrap.style.width = '100%'
+    this._wrap.style.minWidth = '100%'
+    this._wrap.style.position = 'relative'
+    this._wrap.style.overflow = 'hidden'
+
+    if (height !== null) {
+      this._wrap.style.height = `${height}px`
+      this._wrap.style.aspectRatio = ''
+    } else {
+      this._wrap.style.height = 'auto'
+      this._wrap.style.minHeight = '240px'
+      this._wrap.style.aspectRatio = aspectRatio
+    }
+
+    this._mapContainer!.style.width = '100%'
+    this._mapContainer!.style.minWidth = '100%'
+    this._mapContainer!.style.height = '100%'
+  }
+
+  private _getConfiguredHeight() {
+    const height = Number(this._config.height)
+    return Number.isFinite(height) && height > 0 ? height : null
+  }
+
+  private _getAspectRatio() {
+    const value = String(this._config.aspect_ratio ?? DEFAULT_ASPECT_RATIO).trim()
+    const [width, height] = value.split(':').map(Number)
+
+    if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+      return `${width} / ${height}`
+    }
+
+    return DEFAULT_ASPECT_RATIO.replace(':', ' / ')
+  }
+
+  private _scheduleMapInitialize(attempt = 0) {
+    if (this._initialized || this._map) return
+    this._updateCardLayout()
+    if (!this._wrap || !this._mapContainer) return
+
+    if (this._initializeFrame !== null) return
+
+    this._initializeFrame = requestAnimationFrame(() => {
+      this._initializeFrame = null
+      if (this._initialized || this._map || !this._wrap) return
+
+      const rect = this._wrap.getBoundingClientRect()
+      this._logMapSize(`before map init attempt ${attempt + 1}`)
+
+      if ((rect.width === 0 || rect.height === 0) && attempt < 60) {
+        this._scheduleMapInitialize(attempt + 1)
+        return
+      }
+
+      this._initializeMap()
+    })
+  }
+
+  private _initializeMap() {
+    if (this._initialized || this._map || !this._wrap || !this._mapContainer) return
+    this._initialized = true
+
+    this._map = L.map(this._mapContainer, {
       center: THAILAND_CENTER,
       zoom: 10,
       zoomControl: true,
@@ -186,7 +285,7 @@ class EVMapCard extends HTMLElement {
     this._resizeObserver = new ResizeObserver(() => {
       this._invalidateMapSize('resize observer')
     })
-    this._resizeObserver.observe(wrap)
+    this._resizeObserver.observe(this._wrap)
 
     this._invalidateMapSize('after map creation')
 
@@ -303,7 +402,20 @@ class EVMapCard extends HTMLElement {
   }
 
   getCardSize() {
-    return Math.ceil(Number(this._config.height ?? 400) / 50)
+    const height = this._getConfiguredHeight()
+    if (height !== null) return Math.ceil(height / 50)
+    return 5
+  }
+
+  static getStubConfig() {
+    return {
+      type: 'custom:ev-map-card',
+      aspect_ratio: DEFAULT_ASPECT_RATIO,
+      grid_options: {
+        columns: 'full',
+        rows: 'auto',
+      },
+    }
   }
 }
 

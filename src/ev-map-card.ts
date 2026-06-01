@@ -98,36 +98,17 @@ const CARD_CSS = `
     width: 100% !important;
     height: 100% !important;
   }
-  .ev-map-fullscreen-button {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    z-index: 10;
-    width: 34px;
-    height: 34px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid rgba(0,0,0,0.2);
-    border-radius: 4px;
-    background: #fff;
-    color: #111827;
-    font: 700 18px/1 Arial, sans-serif;
-    cursor: pointer;
-    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
-  }
-  .ev-map-fullscreen-button:hover {
-    background: #f3f4f6;
-  }
-  .ev-map-fullscreen-button:focus-visible {
-    outline: 2px solid #38bdf8;
-    outline-offset: 2px;
-  }
   .ev-map-wrap:fullscreen {
     width: 100vw !important;
     height: 100vh !important;
     min-width: 100vw !important;
     background: #0f172a;
+  }
+  .ev-map-wrap:fullscreen .ev-map-container,
+  .ev-map-wrap:fullscreen .maplibregl-canvas-container,
+  .ev-map-wrap:fullscreen .maplibregl-canvas {
+    width: 100vw !important;
+    height: 100vh !important;
   }
   .ev-map-marker {
     border-radius: 999px;
@@ -182,11 +163,9 @@ class EVMapCard extends HTMLElement {
   private _initializeFrame: number | null = null
   private _wrap: HTMLDivElement | null = null
   private _mapContainer: HTMLDivElement | null = null
-  private _fullscreenButton: HTMLButtonElement | null = null
   private _initialized = false
   private _centeredOnLocation = false
   private _fullscreenChangeHandler = () => {
-    this._updateFullscreenButton()
     this._resizeMap('fullscreen change')
     requestAnimationFrame(() => this._resizeMap('fullscreen frame'))
     setTimeout(() => this._resizeMap('fullscreen settled'), 300)
@@ -249,7 +228,6 @@ class EVMapCard extends HTMLElement {
     this._map = null
     this._wrap = null
     this._mapContainer = null
-    this._fullscreenButton = null
     this._initialized = false
     this._centeredOnLocation = false
     document.removeEventListener('fullscreenchange', this._fullscreenChangeHandler)
@@ -276,7 +254,6 @@ class EVMapCard extends HTMLElement {
       const mapContainer = document.createElement('div')
       mapContainer.className = 'ev-map-container'
       wrap.appendChild(mapContainer)
-      wrap.appendChild(this._createFullscreenButton())
       card.appendChild(wrap)
       this._root.replaceChildren(style, card)
 
@@ -363,43 +340,21 @@ class EVMapCard extends HTMLElement {
     this._mapContainer.style.width = `${width}px`
     this._mapContainer.style.minWidth = '100%'
     this._mapContainer.style.height = `${height}px`
+    this._syncMapLibreInnerSize(width, height)
 
     console.debug('[ev-map-card] synced MapLibre container size', { reason, width, height })
   }
 
-  private _createFullscreenButton() {
-    const button = document.createElement('button')
-    button.className = 'ev-map-fullscreen-button'
-    button.type = 'button'
-    button.textContent = '[]'
-    button.title = 'Enter fullscreen'
-    button.setAttribute('aria-label', 'Enter fullscreen')
-    button.addEventListener('click', () => this._toggleFullscreen())
-    this._fullscreenButton = button
-    document.addEventListener('fullscreenchange', this._fullscreenChangeHandler)
-    return button
-  }
+  private _syncMapLibreInnerSize(width: number, height: number) {
+    if (!this._mapContainer) return
 
-  private _updateFullscreenButton() {
-    if (!this._fullscreenButton) return
+    const innerElements = this._mapContainer.querySelectorAll<HTMLElement>(
+      '.maplibregl-canvas-container, .maplibregl-canvas',
+    )
 
-    const fullscreen = document.fullscreenElement === this._wrap
-    this._fullscreenButton.textContent = fullscreen ? 'x' : '[]'
-    this._fullscreenButton.title = fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'
-    this._fullscreenButton.setAttribute('aria-label', fullscreen ? 'Exit fullscreen' : 'Enter fullscreen')
-  }
-
-  private async _toggleFullscreen() {
-    if (!this._wrap) return
-
-    try {
-      if (document.fullscreenElement === this._wrap) {
-        await document.exitFullscreen()
-      } else {
-        await this._wrap.requestFullscreen()
-      }
-    } catch (error) {
-      console.debug('[ev-map-card] fullscreen toggle failed', error)
+    for (const element of innerElements) {
+      element.style.width = `${width}px`
+      element.style.height = `${height}px`
     }
   }
 
@@ -441,6 +396,8 @@ class EVMapCard extends HTMLElement {
     })
 
     this._map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-left')
+    this._map.addControl(new maplibregl.FullscreenControl({ container: this._wrap }), 'top-right')
+    document.addEventListener('fullscreenchange', this._fullscreenChangeHandler)
 
     this._resizeObserver = new ResizeObserver(() => {
       this._resizeMap('resize observer')

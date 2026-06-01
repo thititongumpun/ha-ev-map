@@ -81,6 +81,7 @@ The card:
 
 - Centers on the configured location entity and places a blue marker there.
 - Fetches EV stations within the configured radius from TomTom and renders them as coloured dots.
+- Includes a fullscreen button in the top-right corner of the map. Press `Esc` or click the button again to exit fullscreen.
 - Refreshes automatically every 30 seconds.
 - Shows station name, address, distance, and connector types in a popup when a marker is clicked.
 

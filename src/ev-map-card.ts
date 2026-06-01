@@ -98,15 +98,22 @@ const CARD_CSS = `
     width: 100% !important;
     height: 100% !important;
   }
-  .ev-map-wrap:fullscreen {
+  .ev-map-wrap:fullscreen,
+  .ev-map-wrap.maplibregl-pseudo-fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
     width: 100vw !important;
     height: 100vh !important;
     min-width: 100vw !important;
     background: #0f172a;
+    z-index: 2147483647;
   }
   .ev-map-wrap:fullscreen .ev-map-container,
+  .ev-map-wrap.maplibregl-pseudo-fullscreen .ev-map-container,
   .ev-map-wrap:fullscreen .maplibregl-canvas-container,
-  .ev-map-wrap:fullscreen .maplibregl-canvas {
+  .ev-map-wrap.maplibregl-pseudo-fullscreen .maplibregl-canvas-container,
+  .ev-map-wrap:fullscreen .maplibregl-canvas,
+  .ev-map-wrap.maplibregl-pseudo-fullscreen .maplibregl-canvas {
     width: 100vw !important;
     height: 100vh !important;
   }
@@ -322,7 +329,7 @@ class EVMapCard extends HTMLElement {
     const hostRect = this.getBoundingClientRect()
     const parentRect = this.parentElement?.getBoundingClientRect()
     const cardRect = this._wrap.parentElement?.getBoundingClientRect()
-    const fullscreen = document.fullscreenElement === this._wrap
+    const fullscreen = this._isFullscreen()
     const width = fullscreen
       ? window.innerWidth
       : Math.max(hostRect.width, parentRect?.width ?? 0, cardRect?.width ?? 0)
@@ -356,6 +363,14 @@ class EVMapCard extends HTMLElement {
       element.style.width = `${width}px`
       element.style.height = `${height}px`
     }
+  }
+
+  private _isFullscreen() {
+    return (
+      document.fullscreenElement === this._wrap ||
+      this.shadowRoot?.fullscreenElement === this._wrap ||
+      this._wrap?.classList.contains('maplibregl-pseudo-fullscreen') === true
+    )
   }
 
   private _scheduleMapInitialize(attempt = 0) {
@@ -396,7 +411,7 @@ class EVMapCard extends HTMLElement {
     })
 
     this._map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-left')
-    this._map.addControl(new maplibregl.FullscreenControl({ container: this._wrap }), 'top-right')
+    this._map.addControl(new maplibregl.FullscreenControl({ container: this._wrap, pseudo: true }), 'top-right')
     document.addEventListener('fullscreenchange', this._fullscreenChangeHandler)
 
     this._resizeObserver = new ResizeObserver(() => {

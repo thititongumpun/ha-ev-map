@@ -1,6 +1,6 @@
 {
   "name": "ha-ev-map",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -8,10 +8,9 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "leaflet": "^1.9.4"
+    "maplibre-gl": "^5.24.0"
   },
   "devDependencies": {
-    "@types/leaflet": "^1.9.14",
     "typescript": "^5",
     "vite": "^6"
   }

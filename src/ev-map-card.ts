@@ -1,5 +1,5 @@
-import L from 'leaflet'
-import leafletCss from 'leaflet/dist/leaflet.css?inline'
+import maplibregl from 'maplibre-gl'
+import maplibreCss from 'maplibre-gl/dist/maplibre-gl.css?inline'
 
 interface Connector {
   type: string
@@ -38,8 +38,33 @@ const STATUS_LABEL: Record<string, string> = {
   unknown: 'Unknown',
 }
 
-const THAILAND_CENTER: [number, number] = [13.736717, 100.523186]
+const THAILAND_CENTER: [number, number] = [100.523186, 13.736717]
 const DEFAULT_ASPECT_RATIO = '16:9'
+
+const CARTO_DARK_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    carto: {
+      type: 'raster',
+      tiles: [
+        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      ],
+      tileSize: 256,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    },
+  },
+  layers: [
+    {
+      id: 'carto',
+      type: 'raster',
+      source: 'carto',
+    },
+  ],
+}
 
 const CARD_CSS = `
   :host {
@@ -55,18 +80,11 @@ const CARD_CSS = `
     overflow: hidden;
     border-radius: var(--ha-card-border-radius, 12px);
   }
-
-  /* HA sets max-width:100% on all img — this breaks Leaflet 256px tiles */
-  .ev-map-wrap .leaflet-tile { max-width: none !important; max-height: none !important; }
   .ev-map-wrap {
     width: 100%;
     min-width: 100%;
     position: relative;
     overflow: hidden;
-  }
-  .ev-map-wrap .leaflet-container {
-    width: 100% !important;
-    height: 100% !important;
     background: #0f172a;
   }
   .ev-map-container {
@@ -76,11 +94,15 @@ const CARD_CSS = `
     min-width: 100%;
     height: 100%;
   }
+  .ev-map-container .maplibregl-canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
   .ev-map-fullscreen-button {
     position: absolute;
     top: 10px;
     right: 10px;
-    z-index: 1000;
+    z-index: 10;
     width: 34px;
     height: 34px;
     display: flex;
@@ -107,32 +129,56 @@ const CARD_CSS = `
     min-width: 100vw !important;
     background: #0f172a;
   }
-
-  /* Dark popup theme */
-  .ev-map-popup .leaflet-popup-content-wrapper {
+  .ev-map-marker {
+    border-radius: 999px;
+    border: 2px solid rgba(255,255,255,0.6);
+    cursor: pointer;
+  }
+  .ev-map-marker-location {
+    width: 16px;
+    height: 16px;
+    background: #3b82f6;
+    border-color: #fff;
+    box-shadow: 0 0 10px #3b82f680;
+  }
+  .ev-map-marker-station {
+    width: 12px;
+    height: 12px;
+  }
+  .ev-map-popup .maplibregl-popup-content {
     background: #0f172a;
     color: #e2e8f0;
     border: 1px solid #1e293b;
     border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    padding: 12px 14px;
   }
-  .ev-map-popup .leaflet-popup-content { margin: 12px 14px; }
-  .ev-map-popup .leaflet-popup-tip { background: #0f172a; }
-  .ev-map-popup .leaflet-popup-close-button { color: #94a3b8 !important; }
-  .ev-map-popup .leaflet-popup-close-button:hover { color: #e2e8f0 !important; }
+  .ev-map-popup .maplibregl-popup-tip {
+    border-top-color: #0f172a;
+    border-bottom-color: #0f172a;
+  }
+  .ev-map-popup .maplibregl-popup-close-button {
+    color: #94a3b8;
+    font-size: 18px;
+    padding: 4px 8px;
+  }
+  .ev-map-popup .maplibregl-popup-close-button:hover {
+    color: #e2e8f0;
+    background: transparent;
+  }
 `
 
 class EVMapCard extends HTMLElement {
   private _root: ShadowRoot
   private _hass: any = null
   private _config: Record<string, unknown> = {}
-  private _map: L.Map | null = null
-  private _stationLayer: L.LayerGroup | null = null
-  private _locationMarker: L.Marker | null = null
+  private _map: maplibregl.Map | null = null
+  private _stationMarkers: maplibregl.Marker[] = []
+  private _locationMarker: maplibregl.Marker | null = null
   private _refreshInterval: ReturnType<typeof setInterval> | null = null
   private _resizeObserver: ResizeObserver | null = null
   private _firstRenderFrame: number | null = null
-  private _delayedInvalidateTimer: ReturnType<typeof setTimeout> | null = null
+  private _delayedResizeTimer: ReturnType<typeof setTimeout> | null = null
   private _initializeFrame: number | null = null
   private _wrap: HTMLDivElement | null = null
   private _mapContainer: HTMLDivElement | null = null
@@ -141,9 +187,9 @@ class EVMapCard extends HTMLElement {
   private _centeredOnLocation = false
   private _fullscreenChangeHandler = () => {
     this._updateFullscreenButton()
-    this._invalidateMapSize('fullscreen change')
-    requestAnimationFrame(() => this._invalidateMapSize('fullscreen frame'))
-    setTimeout(() => this._invalidateMapSize('fullscreen settled'), 300)
+    this._resizeMap('fullscreen change')
+    requestAnimationFrame(() => this._resizeMap('fullscreen frame'))
+    setTimeout(() => this._resizeMap('fullscreen settled'), 300)
   }
 
   constructor() {
@@ -155,7 +201,7 @@ class EVMapCard extends HTMLElement {
     this._config = config
     this._updateCardLayout()
     if (this._map) {
-      this._invalidateMapSize('config update')
+      this._resizeMap('config update')
     } else if (this._hass && this.isConnected) {
       this._scheduleMapInitialize()
     }
@@ -166,7 +212,7 @@ class EVMapCard extends HTMLElement {
     if (!this._initialized && this.isConnected) {
       this._scheduleMapInitialize()
     } else if (this._map) {
-      this._invalidateMapSize('hass update')
+      this._resizeMap('hass update')
     }
   }
 
@@ -186,9 +232,9 @@ class EVMapCard extends HTMLElement {
       cancelAnimationFrame(this._firstRenderFrame)
       this._firstRenderFrame = null
     }
-    if (this._delayedInvalidateTimer !== null) {
-      clearTimeout(this._delayedInvalidateTimer)
-      this._delayedInvalidateTimer = null
+    if (this._delayedResizeTimer !== null) {
+      clearTimeout(this._delayedResizeTimer)
+      this._delayedResizeTimer = null
     }
     if (this._initializeFrame !== null) {
       cancelAnimationFrame(this._initializeFrame)
@@ -196,10 +242,11 @@ class EVMapCard extends HTMLElement {
     }
     this._resizeObserver?.disconnect()
     this._resizeObserver = null
+    this._clearStationMarkers()
+    this._locationMarker?.remove()
+    this._locationMarker = null
     this._map?.remove()
     this._map = null
-    this._stationLayer = null
-    this._locationMarker = null
     this._wrap = null
     this._mapContainer = null
     this._fullscreenButton = null
@@ -217,7 +264,7 @@ class EVMapCard extends HTMLElement {
 
     if (!this._wrap || !this._mapContainer) {
       const style = document.createElement('style')
-      style.textContent = leafletCss + CARD_CSS
+      style.textContent = maplibreCss + CARD_CSS
 
       const card = document.createElement('ha-card')
       card.style.width = '100%'
@@ -241,7 +288,7 @@ class EVMapCard extends HTMLElement {
   }
 
   private _applyWrapperSize() {
-    if (!this._wrap) return
+    if (!this._wrap || !this._mapContainer) return
 
     const height = this._getConfiguredHeight()
     const aspectRatio = this._getAspectRatio()
@@ -260,9 +307,9 @@ class EVMapCard extends HTMLElement {
       this._wrap.style.aspectRatio = aspectRatio
     }
 
-    this._mapContainer!.style.width = '100%'
-    this._mapContainer!.style.minWidth = '100%'
-    this._mapContainer!.style.height = '100%'
+    this._mapContainer.style.width = '100%'
+    this._mapContainer.style.minWidth = '100%'
+    this._mapContainer.style.height = '100%'
   }
 
   private _getConfiguredHeight() {
@@ -317,7 +364,7 @@ class EVMapCard extends HTMLElement {
     this._mapContainer.style.minWidth = '100%'
     this._mapContainer.style.height = `${height}px`
 
-    console.debug('[ev-map-card] synced container size', { reason, width, height })
+    console.debug('[ev-map-card] synced MapLibre container size', { reason, width, height })
   }
 
   private _createFullscreenButton() {
@@ -385,24 +432,18 @@ class EVMapCard extends HTMLElement {
     this._initialized = true
     this._syncMapContainerSize('initialize map')
 
-    this._map = L.map(this._mapContainer, {
+    this._map = new maplibregl.Map({
+      container: this._mapContainer,
+      style: CARTO_DARK_STYLE,
       center: THAILAND_CENTER,
       zoom: 10,
-      zoomControl: true,
+      attributionControl: true,
     })
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 19,
-    }).addTo(this._map)
-
-    this._stationLayer = L.layerGroup().addTo(this._map)
+    this._map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-left')
 
     this._resizeObserver = new ResizeObserver(() => {
-      this._syncMapContainerSize('resize observer')
-      this._invalidateMapSize('resize observer')
+      this._resizeMap('resize observer')
     })
     this._resizeObserver.observe(this._wrap)
     this._resizeObserver.observe(this)
@@ -410,29 +451,29 @@ class EVMapCard extends HTMLElement {
       this._resizeObserver.observe(this.parentElement)
     }
 
-    this._invalidateMapSize('after map creation')
+    this._resizeMap('after map creation')
 
     this._firstRenderFrame = requestAnimationFrame(() => {
       this._firstRenderFrame = null
-      this._invalidateMapSize('first render frame')
+      this._resizeMap('first render frame')
       this._fetchAndUpdate()
     })
 
-    this._delayedInvalidateTimer = setTimeout(() => {
-      this._delayedInvalidateTimer = null
-      this._invalidateMapSize('300ms delayed render')
+    this._delayedResizeTimer = setTimeout(() => {
+      this._delayedResizeTimer = null
+      this._resizeMap('300ms delayed render')
     }, 300)
 
     this._refreshInterval = setInterval(() => this._fetchAndUpdate(), 30_000)
   }
 
-  private _invalidateMapSize(reason: string) {
+  private _resizeMap(reason: string) {
     if (!this._map) return
     this._syncMapContainerSize(reason)
-    this._logMapSize(`before invalidateSize (${reason})`)
-    this._map.invalidateSize(true)
-    console.debug('[ev-map-card] invalidateSize()', { reason })
-    this._logMapSize(`after invalidateSize (${reason})`)
+    this._logMapSize(`before resize (${reason})`)
+    this._map.resize()
+    console.debug('[ev-map-card] map.resize()', { reason })
+    this._logMapSize(`after resize (${reason})`)
   }
 
   private _logMapSize(reason: string) {
@@ -459,70 +500,87 @@ class EVMapCard extends HTMLElement {
   }
 
   private _renderStations(data: StationsResponse) {
-    if (!this._map || !this._stationLayer) return
+    if (!this._map) return
 
-    this._stationLayer.clearLayers()
+    this._clearStationMarkers()
 
     const { latitude, longitude } = data.center
 
     if (this._locationMarker) {
-      this._locationMarker.setLatLng([latitude, longitude])
+      this._locationMarker.setLngLat([longitude, latitude])
     } else {
-      const locationIcon = L.divIcon({
-        html: `<div style="width:16px;height:16px;background:#3b82f6;border-radius:50%;border:2px solid white;box-shadow:0 0 10px #3b82f680;"></div>`,
-        className: '',
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
+      this._locationMarker = new maplibregl.Marker({
+        element: this._createMarkerElement('location'),
+        anchor: 'center',
       })
-      this._locationMarker = L.marker([latitude, longitude], {
-        icon: locationIcon,
-        zIndexOffset: 1000,
-      })
+        .setLngLat([longitude, latitude])
+        .setPopup(
+          new maplibregl.Popup({ className: 'ev-map-popup', closeButton: false }).setHTML(
+            '<strong style="color:#f1f5f9;">Your Location</strong>',
+          ),
+        )
         .addTo(this._map)
-        .bindPopup('<strong style="color:#f1f5f9;">Your Location</strong>', {
-          className: 'ev-map-popup',
-        })
     }
 
     if (!this._centeredOnLocation) {
-      this._map.setView([latitude, longitude], 13)
+      this._map.flyTo({ center: [longitude, latitude], zoom: 13, essential: true })
       this._centeredOnLocation = true
     }
 
     for (const station of data.stations) {
       const color = STATUS_COLOR[station.status] ?? STATUS_COLOR['unknown']
-      const icon = L.divIcon({
-        html: `<div style="width:12px;height:12px;background:${color};border-radius:50%;border:2px solid rgba(255,255,255,0.6);box-shadow:0 0 6px ${color}80;"></div>`,
-        className: '',
-        iconSize: [12, 12],
-        iconAnchor: [6, 6],
+      const marker = new maplibregl.Marker({
+        element: this._createMarkerElement('station', color),
+        anchor: 'center',
       })
+        .setLngLat([station.lon, station.lat])
+        .setPopup(new maplibregl.Popup({ className: 'ev-map-popup', maxWidth: '280px' }).setHTML(this._popupHtml(station)))
+        .addTo(this._map)
 
-      const connectorHtml =
-        station.connectors.length > 0
-          ? station.connectors
-              .map(
-                (c) =>
-                  `<span style="display:inline-block;padding:2px 6px;margin:2px;background:#1e293b;border-radius:4px;font-size:11px;color:#e2e8f0;">${c.type}${c.powerKW > 0 ? ` ${c.powerKW} kW` : ''}</span>`,
-              )
-              .join('')
-          : '<span style="color:#64748b;font-size:11px;">No connector data</span>'
-
-      const popupHtml = `
-        <div style="font-family:sans-serif;min-width:200px;">
-          <h3 style="margin:0 0 4px;font-size:13px;font-weight:600;color:#f1f5f9;">${station.name}</h3>
-          <p style="margin:0 0 8px;font-size:11px;color:#94a3b8;line-height:1.4;">${station.address}</p>
-          <div style="margin-bottom:8px;font-size:11px;display:flex;gap:8px;flex-wrap:wrap;">
-            <span><span style="color:#64748b;">Status: </span>${STATUS_LABEL[station.status] ?? 'Unknown'}</span>
-            <span style="color:#64748b;">${station.distanceKm} km</span>
-          </div>
-          <div style="display:flex;flex-wrap:wrap;">${connectorHtml}</div>
-        </div>`
-
-      L.marker([station.lat, station.lon], { icon })
-        .bindPopup(popupHtml, { maxWidth: 280, className: 'ev-map-popup' })
-        .addTo(this._stationLayer!)
+      this._stationMarkers.push(marker)
     }
+  }
+
+  private _createMarkerElement(type: 'location' | 'station', color?: string) {
+    const element = document.createElement('div')
+    element.className = `ev-map-marker ev-map-marker-${type}`
+
+    if (color) {
+      element.style.background = color
+      element.style.boxShadow = `0 0 6px ${color}80`
+    }
+
+    return element
+  }
+
+  private _popupHtml(station: EVStation) {
+    const connectorHtml =
+      station.connectors.length > 0
+        ? station.connectors
+            .map(
+              (connector) =>
+                `<span style="display:inline-block;padding:2px 6px;margin:2px;background:#1e293b;border-radius:4px;font-size:11px;color:#e2e8f0;">${connector.type}${connector.powerKW > 0 ? ` ${connector.powerKW} kW` : ''}</span>`,
+            )
+            .join('')
+        : '<span style="color:#64748b;font-size:11px;">No connector data</span>'
+
+    return `
+      <div style="font-family:sans-serif;min-width:200px;">
+        <h3 style="margin:0 0 4px;font-size:13px;font-weight:600;color:#f1f5f9;">${station.name}</h3>
+        <p style="margin:0 0 8px;font-size:11px;color:#94a3b8;line-height:1.4;">${station.address}</p>
+        <div style="margin-bottom:8px;font-size:11px;display:flex;gap:8px;flex-wrap:wrap;">
+          <span><span style="color:#64748b;">Status: </span>${STATUS_LABEL[station.status] ?? 'Unknown'}</span>
+          <span style="color:#64748b;">${station.distanceKm} km</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;">${connectorHtml}</div>
+      </div>`
+  }
+
+  private _clearStationMarkers() {
+    for (const marker of this._stationMarkers) {
+      marker.remove()
+    }
+    this._stationMarkers = []
   }
 
   getCardSize() {

@@ -1,6 +1,6 @@
 # ha-ev-map
 
-A HACS integration for Home Assistant that shows EV charging stations near a configured location entity on a Leaflet map. The TomTom API key stays server-side inside HA — it never reaches the browser.
+A HACS integration for Home Assistant that shows EV charging stations near a configured location entity on a MapLibre map. The TomTom API key stays server-side inside HA — it never reaches the browser.
 
 ## Requirements
 
@@ -62,7 +62,7 @@ type: custom:ev-map-card
 aspect_ratio: "16:9"
 ```
 
-The card uses `aspect_ratio` to calculate a stable responsive map height before Leaflet initializes. This avoids the common Home Assistant layout issue where Leaflet starts with a single 256x256 tile.
+The card uses `aspect_ratio` to calculate a stable responsive map height before MapLibre initializes. This avoids the common Home Assistant layout issue where map engines start before the dashboard has assigned the final card size.
 
 If you prefer a fixed-height map, use `height` instead:
 
@@ -115,7 +115,7 @@ custom_components/ha_ev_map/   ← Python HA integration
   http.py                      ← GET /api/ha_ev_map/stations (auth-required)
   www/ev-map-card.js           ← built Lovelace card (do not edit directly)
 
-src/ev-map-card.ts             ← card source (TypeScript + Leaflet)
+src/ev-map-card.ts             ← card source (TypeScript + MapLibre GL)
 vite.config.ts                 ← builds card as IIFE into www/
 ```
 

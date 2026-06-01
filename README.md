@@ -45,14 +45,7 @@ Copy `custom_components/ha_ev_map/` into your HA `config/custom_components/` dir
 
 ## Usage
 
-Add the card to any Lovelace dashboard:
-
-```yaml
-type: custom:ev-map-card
-aspect_ratio: "16:9"
-```
-
-For Home Assistant Sections dashboards, use auto rows so the card height is taken from the responsive map frame:
+Add the card to a Home Assistant Sections dashboard with auto rows:
 
 ```yaml
 type: custom:ev-map-card
@@ -60,6 +53,28 @@ aspect_ratio: "16:9"
 grid_options:
   columns: full
   rows: auto
+```
+
+For masonry or other non-Sections dashboards, this is enough:
+
+```yaml
+type: custom:ev-map-card
+aspect_ratio: "16:9"
+```
+
+The card uses `aspect_ratio` to calculate a stable responsive map height before Leaflet initializes. This avoids the common Home Assistant layout issue where Leaflet starts with a single 256x256 tile.
+
+If you prefer a fixed-height map, use `height` instead:
+
+```yaml
+type: custom:ev-map-card
+height: 400
+```
+
+After updating the card JavaScript, Home Assistant or the browser may keep serving an old cached copy. If the map still looks broken after an update, change the dashboard resource URL to include a new version query and hard refresh the browser:
+
+```text
+/ha_ev_map/ev-map-card.js?v=4
 ```
 
 The card:

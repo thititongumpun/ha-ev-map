@@ -133,6 +133,69 @@ const CARD_CSS = `
     width: 12px;
     height: 12px;
   }
+  .ev-station-list {
+    position: absolute;
+    top: 48px;
+    right: 10px;
+    width: 210px;
+    max-height: calc(50% - 60px);
+    overflow-y: auto;
+    background: rgba(15,23,42,0.92);
+    border: 1px solid #334155;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    z-index: 2;
+    display: none;
+  }
+  .ev-station-list::-webkit-scrollbar { width: 4px; }
+  .ev-station-list::-webkit-scrollbar-track { background: transparent; }
+  .ev-station-list::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+  .ev-station-list-header {
+    padding: 6px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid #1e293b;
+    position: sticky;
+    top: 0;
+    background: rgba(15,23,42,0.97);
+  }
+  .ev-station-list-item {
+    padding: 7px 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .ev-station-list-item:last-child { border-bottom: none; }
+  .ev-station-list-item:hover { background: rgba(30,41,59,0.9); }
+  .ev-station-list-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 3px;
+  }
+  .ev-station-list-name {
+    font-size: 11px;
+    color: #e2e8f0;
+    flex: 1;
+    line-height: 1.3;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .ev-station-list-dist {
+    font-size: 10px;
+    color: #64748b;
+    white-space: nowrap;
+    padding-top: 1px;
+  }
   .ev-map-popup .maplibregl-popup-content {
     background: #0f172a;
     color: #e2e8f0;
@@ -170,8 +233,10 @@ class EVMapCard extends HTMLElement {
   private _initializeFrame: number | null = null
   private _wrap: HTMLDivElement | null = null
   private _mapContainer: HTMLDivElement | null = null
+  private _stationList: HTMLDivElement | null = null
   private _initialized = false
   private _centeredOnLocation = false
+  private _currentStations: EVStation[] = []
 
   private static _cachedData: StationsResponse | null = null
   private static _lastCenter: { lat: number; lon: number } | null = null
@@ -239,8 +304,10 @@ class EVMapCard extends HTMLElement {
     this._map = null
     this._wrap = null
     this._mapContainer = null
+    this._stationList = null
     this._initialized = false
     this._centeredOnLocation = false
+    this._currentStations = []
     document.removeEventListener('fullscreenchange', this._fullscreenChangeHandler)
     this._root.replaceChildren()
   }
@@ -264,12 +331,22 @@ class EVMapCard extends HTMLElement {
 
       const mapContainer = document.createElement('div')
       mapContainer.className = 'ev-map-container'
+
+      const stationList = document.createElement('div')
+      stationList.className = 'ev-station-list'
+      const listHeader = document.createElement('div')
+      listHeader.className = 'ev-station-list-header'
+      listHeader.textContent = 'Stations'
+      stationList.appendChild(listHeader)
+
       wrap.appendChild(mapContainer)
+      wrap.appendChild(stationList)
       card.appendChild(wrap)
       this._root.replaceChildren(style, card)
 
       this._wrap = wrap
       this._mapContainer = mapContainer
+      this._stationList = stationList
     }
 
     this._applyWrapperSize()
@@ -535,6 +612,9 @@ class EVMapCard extends HTMLElement {
 
       this._stationMarkers.push(marker)
     }
+
+    this._currentStations = data.stations
+    this._updateStationList()
   }
 
   private _createMarkerElement(type: 'location' | 'station', color?: string) {
@@ -570,6 +650,62 @@ class EVMapCard extends HTMLElement {
         </div>
         <div style="display:flex;flex-wrap:wrap;">${connectorHtml}</div>
       </div>`
+  }
+
+  private _updateStationList() {
+    if (!this._stationList) return
+
+    // remove all items except the sticky header
+    while (this._stationList.children.length > 1) {
+      this._stationList.removeChild(this._stationList.lastChild!)
+    }
+
+    if (this._currentStations.length === 0) {
+      this._stationList.style.display = 'none'
+      return
+    }
+
+    this._stationList.style.display = 'block'
+
+    for (let i = 0; i < this._currentStations.length; i++) {
+      const station = this._currentStations[i]
+      const color = STATUS_COLOR[station.status] ?? STATUS_COLOR['unknown']
+
+      const item = document.createElement('div')
+      item.className = 'ev-station-list-item'
+
+      const dot = document.createElement('div')
+      dot.className = 'ev-station-list-dot'
+      dot.style.background = color
+
+      const name = document.createElement('span')
+      name.className = 'ev-station-list-name'
+      name.textContent = station.name
+
+      const dist = document.createElement('span')
+      dist.className = 'ev-station-list-dist'
+      dist.textContent = `${station.distanceKm} km`
+
+      item.appendChild(dot)
+      item.appendChild(name)
+      item.appendChild(dist)
+      item.addEventListener('click', () => this._flyToStation(i))
+      this._stationList.appendChild(item)
+    }
+  }
+
+  private _flyToStation(index: number) {
+    if (!this._map) return
+    const station = this._currentStations[index]
+    if (!station) return
+
+    this._map.flyTo({ center: [station.lon, station.lat], zoom: 16, essential: true })
+
+    const marker = this._stationMarkers[index]
+    if (marker) {
+      for (const m of this._stationMarkers) m.getPopup()?.remove()
+      setTimeout(() => marker.togglePopup(), 600)
+    }
   }
 
   private _clearStationMarkers() {

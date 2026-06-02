@@ -14,7 +14,7 @@ A HACS integration for Home Assistant that shows EV charging stations near a con
 ### Via HACS (recommended)
 
 1. In HACS, go to **Integrations** → menu (⋮) → **Custom repositories**.
-2. Add `https://github.com/thititongumpun/ha-th-ev-map` with category **Integration**.
+2. Add `https://github.com/thititongumpun/ha-ev-map` with category **Integration**.
 3. Search for **EV Map** and install it.
 4. Restart Home Assistant.
 

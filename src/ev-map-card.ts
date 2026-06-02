@@ -66,6 +66,12 @@ const CARTO_DARK_STYLE: maplibregl.StyleSpecification = {
   ],
 }
 
+const MAP_STYLES: Array<{ id: string; label: string; style: maplibregl.StyleSpecification | string }> = [
+  { id: 'default', label: 'Dark', style: CARTO_DARK_STYLE },
+  { id: 'openstreetmap', label: 'OpenStreetMap', style: 'https://tiles.openfreemap.org/styles/bright' },
+  { id: 'liberty', label: 'Liberty', style: 'https://tiles.openfreemap.org/styles/liberty' },
+]
+
 const CARD_CSS = `
   :host {
     display: block;
@@ -215,6 +221,71 @@ const CARD_CSS = `
     white-space: nowrap;
     padding-top: 1px;
   }
+  .ev-style-toggle {
+    position: absolute;
+    top: 48px;
+    right: 10px;
+    width: 30px;
+    height: 30px;
+    background: rgba(15,23,42,0.92);
+    border: 1px solid #334155;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    user-select: none;
+  }
+  .ev-style-toggle:hover { background: rgba(30,41,59,0.97); }
+  .ev-style-toggle.active { background: rgba(30,41,59,0.97); border-color: #64748b; }
+  .ev-style-panel {
+    position: absolute;
+    top: 86px;
+    right: 10px;
+    width: 148px;
+    background: rgba(15,23,42,0.95);
+    border: 1px solid #334155;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    z-index: 2;
+    display: none;
+    overflow: hidden;
+  }
+  .ev-style-panel-header {
+    padding: 6px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid #1e293b;
+  }
+  .ev-style-option {
+    padding: 8px 10px;
+    cursor: pointer;
+    font-size: 11px;
+    color: #94a3b8;
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .ev-style-option:last-child { border-bottom: none; }
+  .ev-style-option:hover { background: rgba(30,41,59,0.9); color: #e2e8f0; }
+  .ev-style-option.selected { color: #e2e8f0; }
+  .ev-style-option-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    border: 1.5px solid #475569;
+    flex-shrink: 0;
+  }
+  .ev-style-option.selected .ev-style-option-dot {
+    background: #3b82f6;
+    border-color: #3b82f6;
+  }
   .ev-map-popup .maplibregl-popup-content {
     background: #0f172a;
     color: #e2e8f0;
@@ -254,6 +325,9 @@ class EVMapCard extends HTMLElement {
   private _mapContainer: HTMLDivElement | null = null
   private _stationList: HTMLDivElement | null = null
   private _stationListToggle: HTMLDivElement | null = null
+  private _stylePanel: HTMLDivElement | null = null
+  private _styleToggle: HTMLDivElement | null = null
+  private _activeStyleId = 'default'
   private _listOpen = false
   private _initialized = false
   private _centeredOnLocation = false
@@ -327,6 +401,8 @@ class EVMapCard extends HTMLElement {
     this._mapContainer = null
     this._stationList = null
     this._stationListToggle = null
+    this._stylePanel = null
+    this._styleToggle = null
     this._listOpen = false
     this._initialized = false
     this._centeredOnLocation = false
@@ -373,9 +449,46 @@ class EVMapCard extends HTMLElement {
         }
       })
 
+      const styleToggle = document.createElement('div')
+      styleToggle.className = 'ev-style-toggle'
+      styleToggle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1L12.5 4L7 7L1.5 4Z" stroke="#e2e8f0" stroke-width="1.2" stroke-linejoin="round" fill="none"/><path d="M1.5 7L7 10L12.5 7" stroke="#e2e8f0" stroke-width="1.2" stroke-linecap="round" fill="none"/><path d="M1.5 10L7 13L12.5 10" stroke="#e2e8f0" stroke-width="1.2" stroke-linecap="round" fill="none"/></svg>`
+
+      const stylePanel = document.createElement('div')
+      stylePanel.className = 'ev-style-panel'
+      const stylePanelHeader = document.createElement('div')
+      stylePanelHeader.className = 'ev-style-panel-header'
+      stylePanelHeader.textContent = 'Map Style'
+      stylePanel.appendChild(stylePanelHeader)
+
+      for (const s of MAP_STYLES) {
+        const opt = document.createElement('div')
+        opt.className = 'ev-style-option' + (s.id === this._activeStyleId ? ' selected' : '')
+        opt.dataset.styleId = s.id
+        const dot = document.createElement('div')
+        dot.className = 'ev-style-option-dot'
+        const label = document.createElement('span')
+        label.textContent = s.label
+        opt.appendChild(dot)
+        opt.appendChild(label)
+        opt.addEventListener('click', () => {
+          this._applyMapStyle(s.id)
+          stylePanel.style.display = 'none'
+          styleToggle.classList.remove('active')
+        })
+        stylePanel.appendChild(opt)
+      }
+
+      styleToggle.addEventListener('click', () => {
+        const open = stylePanel.style.display === 'block'
+        stylePanel.style.display = open ? 'none' : 'block'
+        styleToggle.classList.toggle('active', !open)
+      })
+
       wrap.appendChild(mapContainer)
       wrap.appendChild(stationList)
       wrap.appendChild(toggle)
+      wrap.appendChild(stylePanel)
+      wrap.appendChild(styleToggle)
       card.appendChild(wrap)
       this._root.replaceChildren(style, card)
 
@@ -383,6 +496,8 @@ class EVMapCard extends HTMLElement {
       this._mapContainer = mapContainer
       this._stationList = stationList
       this._stationListToggle = toggle
+      this._stylePanel = stylePanel
+      this._styleToggle = styleToggle
     }
 
     this._applyWrapperSize()
@@ -686,6 +801,19 @@ class EVMapCard extends HTMLElement {
         </div>
         <div style="display:flex;flex-wrap:wrap;">${connectorHtml}</div>
       </div>`
+  }
+
+  private _applyMapStyle(id: string) {
+    if (!this._map || id === this._activeStyleId) return
+    const entry = MAP_STYLES.find((s) => s.id === id)
+    if (!entry) return
+    this._activeStyleId = id
+    this._map.setStyle(entry.style as maplibregl.StyleSpecification | string)
+    if (this._stylePanel) {
+      for (const el of this._stylePanel.querySelectorAll<HTMLElement>('.ev-style-option')) {
+        el.classList.toggle('selected', el.dataset.styleId === id)
+      }
+    }
   }
 
   private _updateStationList() {

@@ -59,6 +59,22 @@ class EVMapStationsView(HomeAssistantView):
         )
 
 
+class EVMapConfigView(HomeAssistantView):
+    url = "/api/ha_ev_map/config"
+    name = "api:ha_ev_map:config"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
+
+    async def get(self, request):  # noqa: ANN001
+        entries = self._hass.config_entries.async_entries(DOMAIN)
+        if not entries:
+            return self.json_message("Integration not configured", 503)
+        entry = entries[0]
+        return self.json({"tomtom_key": entry.data[CONF_TOMTOM_API_KEY]})
+
+
 def _station_dict(station: EVStation) -> dict:
     return {
         "id": station.id,

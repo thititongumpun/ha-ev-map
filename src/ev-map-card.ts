@@ -221,6 +221,44 @@ const CARD_CSS = `
     white-space: nowrap;
     padding-top: 1px;
   }
+  .ev-locate-btn {
+    position: absolute;
+    top: 96px;
+    left: 10px;
+    width: 30px;
+    height: 30px;
+    background: rgba(15,23,42,0.92);
+    border: 1px solid #334155;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    user-select: none;
+  }
+  .ev-locate-btn:hover { background: rgba(30,41,59,0.97); }
+  .ev-traffic-toggle {
+    position: absolute;
+    top: 124px;
+    right: 10px;
+    width: 30px;
+    height: 30px;
+    background: rgba(15,23,42,0.92);
+    border: 1px solid #334155;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    user-select: none;
+  }
+  .ev-traffic-toggle:hover { background: rgba(30,41,59,0.97); }
+  .ev-traffic-toggle.active { background: rgba(30,41,59,0.97); border-color: #f59e0b; }
+  .ev-traffic-toggle.active svg path, .ev-traffic-toggle.active svg circle, .ev-traffic-toggle.active svg rect { stroke: #f59e0b; }
   .ev-pitch-toggle {
     position: absolute;
     top: 86px;
@@ -348,8 +386,12 @@ class EVMapCard extends HTMLElement {
   private _stylePanel: HTMLDivElement | null = null
   private _styleToggle: HTMLDivElement | null = null
   private _pitchToggle: HTMLDivElement | null = null
+  private _trafficToggle: HTMLDivElement | null = null
+  private _locateBtn: HTMLDivElement | null = null
   private _activeStyleId = 'default'
   private _pitchEnabled = false
+  private _trafficEnabled = false
+  private _tomtomKey: string | null = null
   private _listOpen = false
   private _initialized = false
   private _centeredOnLocation = false
@@ -426,7 +468,10 @@ class EVMapCard extends HTMLElement {
     this._stylePanel = null
     this._styleToggle = null
     this._pitchToggle = null
+    this._trafficToggle = null
+    this._locateBtn = null
     this._pitchEnabled = false
+    this._trafficEnabled = false
     this._listOpen = false
     this._initialized = false
     this._centeredOnLocation = false
@@ -516,12 +561,26 @@ class EVMapCard extends HTMLElement {
         this._setPitch(!this._pitchEnabled)
       })
 
+      const locateBtn = document.createElement('div')
+      locateBtn.className = 'ev-locate-btn'
+      locateBtn.title = 'Fly to my location'
+      locateBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7" cy="7" r="3" stroke="#e2e8f0" stroke-width="1.2"/><line x1="7" y1="0.5" x2="7" y2="3.5" stroke="#e2e8f0" stroke-width="1.2" stroke-linecap="round"/><line x1="7" y1="10.5" x2="7" y2="13.5" stroke="#e2e8f0" stroke-width="1.2" stroke-linecap="round"/><line x1="0.5" y1="7" x2="3.5" y2="7" stroke="#e2e8f0" stroke-width="1.2" stroke-linecap="round"/><line x1="10.5" y1="7" x2="13.5" y2="7" stroke="#e2e8f0" stroke-width="1.2" stroke-linecap="round"/></svg>`
+      locateBtn.addEventListener('click', () => this._flyToCurrentLocation())
+
+      const trafficToggle = document.createElement('div')
+      trafficToggle.className = 'ev-traffic-toggle'
+      trafficToggle.title = 'Traffic overlay'
+      trafficToggle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="4.5" width="11" height="5" rx="1.5" stroke="#e2e8f0" stroke-width="1.2"/><path d="M3 4.5L4.2 2H9.8L11 4.5" stroke="#e2e8f0" stroke-width="1.2" stroke-linejoin="round"/><circle cx="3.5" cy="10" r="1.5" stroke="#e2e8f0" stroke-width="1.2"/><circle cx="10.5" cy="10" r="1.5" stroke="#e2e8f0" stroke-width="1.2"/></svg>`
+      trafficToggle.addEventListener('click', () => this._toggleTraffic())
+
       wrap.appendChild(mapContainer)
       wrap.appendChild(stationList)
       wrap.appendChild(toggle)
       wrap.appendChild(stylePanel)
       wrap.appendChild(styleToggle)
       wrap.appendChild(pitchToggle)
+      wrap.appendChild(locateBtn)
+      wrap.appendChild(trafficToggle)
       card.appendChild(wrap)
       this._root.replaceChildren(style, card)
 
@@ -532,6 +591,8 @@ class EVMapCard extends HTMLElement {
       this._stylePanel = stylePanel
       this._styleToggle = styleToggle
       this._pitchToggle = pitchToggle
+      this._locateBtn = locateBtn
+      this._trafficToggle = trafficToggle
     }
 
     this._applyWrapperSize()
@@ -695,6 +756,7 @@ class EVMapCard extends HTMLElement {
       this._firstRenderFrame = null
       this._resizeMap('first render frame')
       this._fetchAndUpdate()
+      this._fetchConfig()
     })
 
     this._delayedResizeTimer = setTimeout(() => {
@@ -837,18 +899,62 @@ class EVMapCard extends HTMLElement {
       </div>`
   }
 
+  private async _fetchConfig() {
+    if (this._tomtomKey || !this._hass) return
+    try {
+      const cfg = await this._hass.callApi('GET', 'ha_ev_map/config')
+      this._tomtomKey = (cfg as { tomtom_key: string }).tomtom_key
+    } catch {
+      // traffic stays disabled if config fetch fails
+    }
+  }
+
+  private _flyToCurrentLocation() {
+    if (!this._map || !EVMapCard._cachedData) return
+    const { latitude, longitude } = EVMapCard._cachedData.center
+    this._map.flyTo({ center: [longitude, latitude], zoom: 15, essential: true })
+  }
+
+  private _toggleTraffic() {
+    if (!this._tomtomKey) return
+    this._trafficEnabled = !this._trafficEnabled
+    this._trafficToggle?.classList.toggle('active', this._trafficEnabled)
+    if (this._trafficEnabled) {
+      this._addTrafficLayer()
+    } else {
+      this._removeTrafficLayer()
+    }
+  }
+
+  private _addTrafficLayer() {
+    if (!this._map || !this._tomtomKey) return
+    if (this._map.getSource('tomtom-traffic')) return
+    this._map.addSource('tomtom-traffic', {
+      type: 'raster',
+      tiles: [
+        `https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=${this._tomtomKey}&tileSize=256`,
+      ],
+      tileSize: 256,
+    })
+    this._map.addLayer({ id: 'tomtom-traffic', type: 'raster', source: 'tomtom-traffic', paint: { 'raster-opacity': 0.75 } })
+  }
+
+  private _removeTrafficLayer() {
+    if (!this._map) return
+    if (this._map.getLayer('tomtom-traffic')) this._map.removeLayer('tomtom-traffic')
+    if (this._map.getSource('tomtom-traffic')) this._map.removeSource('tomtom-traffic')
+  }
+
   private _applyMapStyle(id: string) {
     if (!this._map || id === this._activeStyleId) return
     const entry = MAP_STYLES.find((s) => s.id === id)
     if (!entry) return
     this._activeStyleId = id
     this._map.setStyle(entry.style as maplibregl.StyleSpecification | string)
-    if (entry.pitch !== undefined) {
-      const targetPitch = entry.pitch
-      this._map.once('style.load', () => {
-        this._setPitch(targetPitch > 0)
-      })
-    }
+    this._map.once('style.load', () => {
+      if (entry.pitch !== undefined) this._setPitch(entry.pitch > 0)
+      if (this._trafficEnabled) this._addTrafficLayer()
+    })
     if (this._stylePanel) {
       for (const el of this._stylePanel.querySelectorAll<HTMLElement>('.ev-style-option')) {
         el.classList.toggle('selected', el.dataset.styleId === id)

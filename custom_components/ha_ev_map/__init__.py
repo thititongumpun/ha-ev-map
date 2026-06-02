@@ -5,7 +5,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
-from .http import EVMapStationsView
+from .http import EVMapConfigView, EVMapStationsView
 
 PLATFORMS: list[str] = []
 
@@ -25,6 +25,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.http.register_view(EVMapStationsView(hass))
+    hass.http.register_view(EVMapConfigView(hass))
     return True
 
 

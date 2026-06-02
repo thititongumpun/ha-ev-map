@@ -172,6 +172,10 @@ class EVMapCard extends HTMLElement {
   private _mapContainer: HTMLDivElement | null = null
   private _initialized = false
   private _centeredOnLocation = false
+
+  private static _cachedData: StationsResponse | null = null
+  private static _lastCenter: { lat: number; lon: number } | null = null
+  private static _lastEntityId: string | null = null
   private _fullscreenChangeHandler = () => {
     this._resizeMap('fullscreen change')
     requestAnimationFrame(() => this._resizeMap('fullscreen frame'))
@@ -461,10 +465,30 @@ class EVMapCard extends HTMLElement {
     })
   }
 
+  private _positionUnchanged(lat: number, lon: number): boolean {
+    if (!EVMapCard._lastCenter) return false
+    const EPSILON = 0.0001 // ~11 m
+    return Math.abs(lat - EVMapCard._lastCenter.lat) <= EPSILON && Math.abs(lon - EVMapCard._lastCenter.lon) <= EPSILON
+  }
+
   private async _fetchAndUpdate() {
     if (!this._hass) return
+
+    if (EVMapCard._cachedData && EVMapCard._lastEntityId) {
+      const state = this._hass.states[EVMapCard._lastEntityId]
+      const lat = state?.attributes?.latitude
+      const lon = state?.attributes?.longitude
+      if (lat !== undefined && lon !== undefined && this._positionUnchanged(lat, lon)) {
+        this._renderStations(EVMapCard._cachedData)
+        return
+      }
+    }
+
     try {
       const data: StationsResponse = await this._hass.callApi('GET', 'ha_ev_map/stations')
+      EVMapCard._cachedData = data
+      EVMapCard._lastCenter = { lat: data.center.latitude, lon: data.center.longitude }
+      EVMapCard._lastEntityId = data.center.entityId
       this._renderStations(data)
     } catch {
       // map stays visible if request fails

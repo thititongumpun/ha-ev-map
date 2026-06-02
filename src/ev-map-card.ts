@@ -66,10 +66,10 @@ const CARTO_DARK_STYLE: maplibregl.StyleSpecification = {
   ],
 }
 
-const MAP_STYLES: Array<{ id: string; label: string; style: maplibregl.StyleSpecification | string }> = [
-  { id: 'default', label: 'Dark', style: CARTO_DARK_STYLE },
-  { id: 'openstreetmap', label: 'OpenStreetMap', style: 'https://tiles.openfreemap.org/styles/bright' },
-  { id: 'liberty', label: 'Liberty', style: 'https://tiles.openfreemap.org/styles/liberty' },
+const MAP_STYLES: Array<{ id: string; label: string; style: maplibregl.StyleSpecification | string; pitch?: number }> = [
+  { id: 'default', label: 'Dark', style: CARTO_DARK_STYLE, pitch: 0 },
+  { id: 'openstreetmap', label: 'OpenStreetMap', style: 'https://tiles.openfreemap.org/styles/bright', pitch: 0 },
+  { id: 'liberty', label: 'Liberty 3D', style: 'https://tiles.openfreemap.org/styles/liberty', pitch: 45 },
 ]
 
 const CARD_CSS = `
@@ -809,6 +809,11 @@ class EVMapCard extends HTMLElement {
     if (!entry) return
     this._activeStyleId = id
     this._map.setStyle(entry.style as maplibregl.StyleSpecification | string)
+    if (entry.pitch !== undefined) {
+      this._map.once('style.load', () => {
+        this._map?.easeTo({ pitch: entry.pitch!, duration: 600 })
+      })
+    }
     if (this._stylePanel) {
       for (const el of this._stylePanel.querySelectorAll<HTMLElement>('.ev-style-option')) {
         el.classList.toggle('selected', el.dataset.styleId === id)

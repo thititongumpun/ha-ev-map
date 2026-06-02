@@ -135,8 +135,8 @@ const CARD_CSS = `
   }
   .ev-station-list {
     position: absolute;
-    top: 48px;
-    right: 10px;
+    top: 90px;
+    left: 10px;
     width: 210px;
     max-height: calc(50% - 60px);
     overflow-y: auto;

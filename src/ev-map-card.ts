@@ -189,15 +189,116 @@ const CARD_CSS = `
   }
   .ev-station-list-item {
     padding: 7px 10px;
-    cursor: pointer;
     border-bottom: 1px solid #1e293b;
     display: flex;
-    justify-content: space-between;
     align-items: flex-start;
     gap: 6px;
   }
   .ev-station-list-item:last-child { border-bottom: none; }
   .ev-station-list-item:hover { background: rgba(30,41,59,0.9); }
+  .ev-station-list-item-main {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    cursor: pointer;
+    min-width: 0;
+  }
+  .ev-station-list-route-btn {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 1px;
+    opacity: 0.5;
+  }
+  .ev-station-list-route-btn:hover { background: rgba(59,130,246,0.2); opacity: 1; }
+  .ev-route-panel {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(10,18,35,0.97);
+    border-top: 1px solid #334155;
+    z-index: 4;
+    display: none;
+    padding: 10px 12px 12px;
+    backdrop-filter: blur(4px);
+  }
+  .ev-route-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .ev-route-close {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #64748b;
+    border-radius: 4px;
+  }
+  .ev-route-close:hover { color: #e2e8f0; background: rgba(30,41,59,0.8); }
+  .ev-route-name {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 600;
+    color: #f1f5f9;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .ev-route-meta {
+    font-size: 11px;
+    color: #64748b;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .ev-route-meta-sep { color: #334155; }
+  .ev-route-apps {
+    display: flex;
+    gap: 8px;
+  }
+  .ev-route-app {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 2px;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: border-color 0.15s;
+    text-decoration: none;
+  }
+  .ev-route-app:hover { border-color: #334155; background: rgba(30,41,59,0.6); }
+  .ev-route-app-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  .ev-route-app-label {
+    font-size: 9px;
+    color: #94a3b8;
+    text-align: center;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
   .ev-station-list-dot {
     width: 7px;
     height: 7px;
@@ -392,6 +493,9 @@ class EVMapCard extends HTMLElement {
   private _pitchEnabled = false
   private _trafficEnabled = false
   private _tomtomKey: string | null = null
+  private _routePanel: HTMLDivElement | null = null
+  private _routeStation: EVStation | null = null
+  private _routeCoords: number[][] | null = null
   private _listOpen = false
   private _initialized = false
   private _centeredOnLocation = false
@@ -472,6 +576,9 @@ class EVMapCard extends HTMLElement {
     this._locateBtn = null
     this._pitchEnabled = false
     this._trafficEnabled = false
+    this._routePanel = null
+    this._routeStation = null
+    this._routeCoords = null
     this._listOpen = false
     this._initialized = false
     this._centeredOnLocation = false
@@ -573,6 +680,9 @@ class EVMapCard extends HTMLElement {
       trafficToggle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="4.5" width="11" height="5" rx="1.5" stroke="#e2e8f0" stroke-width="1.2"/><path d="M3 4.5L4.2 2H9.8L11 4.5" stroke="#e2e8f0" stroke-width="1.2" stroke-linejoin="round"/><circle cx="3.5" cy="10" r="1.5" stroke="#e2e8f0" stroke-width="1.2"/><circle cx="10.5" cy="10" r="1.5" stroke="#e2e8f0" stroke-width="1.2"/></svg>`
       trafficToggle.addEventListener('click', () => this._toggleTraffic())
 
+      const routePanel = document.createElement('div')
+      routePanel.className = 'ev-route-panel'
+
       wrap.appendChild(mapContainer)
       wrap.appendChild(stationList)
       wrap.appendChild(toggle)
@@ -581,6 +691,7 @@ class EVMapCard extends HTMLElement {
       wrap.appendChild(pitchToggle)
       wrap.appendChild(locateBtn)
       wrap.appendChild(trafficToggle)
+      wrap.appendChild(routePanel)
       card.appendChild(wrap)
       this._root.replaceChildren(style, card)
 
@@ -593,6 +704,7 @@ class EVMapCard extends HTMLElement {
       this._pitchToggle = pitchToggle
       this._locateBtn = locateBtn
       this._trafficToggle = trafficToggle
+      this._routePanel = routePanel
     }
 
     this._applyWrapperSize()
@@ -954,6 +1066,7 @@ class EVMapCard extends HTMLElement {
     this._map.once('style.load', () => {
       if (entry.pitch !== undefined) this._setPitch(entry.pitch > 0)
       if (this._trafficEnabled) this._addTrafficLayer()
+      if (this._routeCoords) this._drawRoute(this._routeCoords)
     })
     if (this._stylePanel) {
       for (const el of this._stylePanel.querySelectorAll<HTMLElement>('.ev-style-option')) {
@@ -967,6 +1080,130 @@ class EVMapCard extends HTMLElement {
     this._pitchEnabled = enabled
     this._map.easeTo({ pitch: enabled ? 45 : 0, duration: 600 })
     this._pitchToggle?.classList.toggle('active', enabled)
+  }
+
+  private async _requestRoute(station: EVStation) {
+    if (!this._hass || !this._map) return
+    try {
+      const data = await this._hass.callApi(
+        'GET',
+        `ha_ev_map/route?to_lat=${station.lat}&to_lon=${station.lon}`,
+      ) as { distanceKm: number; durationMin: number; geojson: { type: string; coordinates: number[][] } }
+      this._routeStation = station
+      this._routeCoords = data.geojson.coordinates
+      this._drawRoute(this._routeCoords)
+      this._showRoutePanel(station, data.distanceKm, data.durationMin)
+    } catch {
+      // silently fail — map stays in current state
+    }
+  }
+
+  private _drawRoute(coords: number[][]) {
+    if (!this._map) return
+    this._clearRoute()
+    const geojson: maplibregl.GeoJSONSourceSpecification = {
+      type: 'geojson',
+      data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
+    }
+    this._map.addSource('ev-route', geojson)
+    this._map.addLayer({ id: 'ev-route-shadow', type: 'line', source: 'ev-route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#000', 'line-width': 8, 'line-opacity': 0.25 } })
+    this._map.addLayer({ id: 'ev-route-line', type: 'line', source: 'ev-route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#3b82f6', 'line-width': 4.5 } })
+  }
+
+  private _clearRoute() {
+    if (!this._map) return
+    for (const id of ['ev-route-line', 'ev-route-shadow']) {
+      if (this._map.getLayer(id)) this._map.removeLayer(id)
+    }
+    if (this._map.getSource('ev-route')) this._map.removeSource('ev-route')
+  }
+
+  private _showRoutePanel(station: EVStation, distanceKm: number, durationMin: number) {
+    if (!this._routePanel) return
+
+    this._routePanel.innerHTML = ''
+
+    // info row
+    const info = document.createElement('div')
+    info.className = 'ev-route-info'
+
+    const closeBtn = document.createElement('div')
+    closeBtn.className = 'ev-route-close'
+    closeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1L11 11M11 1L1 11" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/></svg>`
+    closeBtn.addEventListener('click', () => {
+      this._clearRoute()
+      this._routeStation = null
+      this._routeCoords = null
+      if (this._routePanel) this._routePanel.style.display = 'none'
+    })
+
+    const name = document.createElement('div')
+    name.className = 'ev-route-name'
+    name.textContent = station.name
+
+    const meta = document.createElement('div')
+    meta.className = 'ev-route-meta'
+    meta.innerHTML = `<span>${distanceKm} km</span><span class="ev-route-meta-sep">·</span><span>${durationMin} min</span>`
+
+    info.appendChild(closeBtn)
+    info.appendChild(name)
+    info.appendChild(meta)
+
+    // app buttons row
+    const apps = document.createElement('div')
+    apps.className = 'ev-route-apps'
+
+    const appDefs = [
+      {
+        label: 'Apple Maps',
+        bg: 'linear-gradient(145deg,#1c1c1e,#3a3a3c)',
+        icon: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2C5.13 2 2 5.13 2 9s3.13 7 7 7 7-3.13 7-7-3.13-7-7-7zm.5 10.5h-1v-5h1v5zm0-6.5h-1V5h1v1z" fill="white" opacity="0.9"/></svg>`,
+        url: `https://maps.apple.com/?daddr=${station.lat},${station.lon}&dirflg=d`,
+      },
+      {
+        label: 'Google Maps',
+        bg: 'linear-gradient(145deg,#4285F4,#34A853)',
+        icon: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 1C5.69 1 3 3.69 3 7c0 4.5 6 10 6 10s6-5.5 6-10c0-3.31-2.69-6-6-6zm0 8a2 2 0 110-4 2 2 0 010 4z" fill="white"/>  </svg>`,
+        url: `https://www.google.com/maps/dir/?api=1&destination=${station.lat},${station.lon}&travelmode=driving`,
+      },
+      {
+        label: 'AMap',
+        bg: 'linear-gradient(145deg,#0097A7,#00BCD4)',
+        icon: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 1C5.69 1 3 3.69 3 7c0 4.5 6 10 6 10s6-5.5 6-10c0-3.31-2.69-6-6-6zm0 8a2 2 0 110-4 2 2 0 010 4z" fill="white"/></svg>`,
+        url: `https://uri.amap.com/navigation?to=${station.lon},${station.lat},${encodeURIComponent(station.name)}&mode=car&callnative=1`,
+      },
+      {
+        label: 'Waze',
+        bg: 'linear-gradient(145deg,#33CCFF,#0099CC)',
+        icon: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="8" r="5.5" stroke="white" stroke-width="1.5"/><circle cx="6.5" cy="7" r="1" fill="white"/><circle cx="11.5" cy="7" r="1" fill="white"/><path d="M6.5 10c.5 1 4 1 5 0" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg>`,
+        url: `https://waze.com/ul?ll=${station.lat},${station.lon}&navigate=yes`,
+      },
+    ]
+
+    for (const app of appDefs) {
+      const btn = document.createElement('a')
+      btn.className = 'ev-route-app'
+      btn.href = app.url
+      btn.target = '_blank'
+      btn.rel = 'noopener'
+
+      const icon = document.createElement('div')
+      icon.className = 'ev-route-app-icon'
+      icon.style.background = app.bg
+      icon.innerHTML = app.icon
+
+      const label = document.createElement('div')
+      label.className = 'ev-route-app-label'
+      label.textContent = app.label
+
+      btn.appendChild(icon)
+      btn.appendChild(label)
+      apps.appendChild(btn)
+    }
+
+    this._routePanel.appendChild(info)
+    this._routePanel.appendChild(apps)
+    this._routePanel.style.display = 'block'
   }
 
   private _updateStationList() {
@@ -993,6 +1230,11 @@ class EVMapCard extends HTMLElement {
       const item = document.createElement('div')
       item.className = 'ev-station-list-item'
 
+      // clickable main area: dot + name + dist
+      const main = document.createElement('div')
+      main.className = 'ev-station-list-item-main'
+      main.addEventListener('click', () => this._flyToStation(i))
+
       const dot = document.createElement('div')
       dot.className = 'ev-station-list-dot'
       dot.style.background = color
@@ -1005,10 +1247,22 @@ class EVMapCard extends HTMLElement {
       dist.className = 'ev-station-list-dist'
       dist.textContent = `${station.distanceKm} km`
 
-      item.appendChild(dot)
-      item.appendChild(name)
-      item.appendChild(dist)
-      item.addEventListener('click', () => this._flyToStation(i))
+      main.appendChild(dot)
+      main.appendChild(name)
+      main.appendChild(dist)
+
+      // route button
+      const routeBtn = document.createElement('div')
+      routeBtn.className = 'ev-station-list-route-btn'
+      routeBtn.title = 'Get route'
+      routeBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 11C2 11 3 8 6 7C9 6 11 3 11 3" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/><path d="M9 3H11V5" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      routeBtn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        this._requestRoute(station)
+      })
+
+      item.appendChild(main)
+      item.appendChild(routeBtn)
       this._stationList.appendChild(item)
     }
   }

@@ -38,6 +38,8 @@ const STATUS_LABEL: Record<string, string> = {
   unknown: 'Unknown',
 }
 
+const ROUTE_ICON_SVG = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 11C2 11 3 8 6 7C9 6 11 3 11 3" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/><path d="M9 3H11V5" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+
 const THAILAND_CENTER: [number, number] = [100.523186, 13.736717]
 const DEFAULT_ASPECT_RATIO = '16:9'
 
@@ -465,6 +467,70 @@ const CARD_CSS = `
   .ev-map-popup .maplibregl-popup-close-button:hover {
     color: #e2e8f0;
     background: transparent;
+  }
+  .ev-popup-card {
+    font-family: sans-serif;
+    min-width: 210px;
+  }
+  .ev-popup-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .ev-popup-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: #f1f5f9;
+  }
+  .ev-popup-route-btn {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+  }
+  .ev-popup-route-btn:hover {
+    background: rgba(59,130,246,0.2);
+  }
+  .ev-popup-address {
+    margin: 0 0 8px;
+    font-size: 11px;
+    color: #94a3b8;
+    line-height: 1.4;
+  }
+  .ev-popup-meta {
+    margin-bottom: 8px;
+    font-size: 11px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .ev-popup-muted {
+    color: #64748b;
+  }
+  .ev-popup-connectors {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .ev-popup-connector {
+    display: inline-block;
+    padding: 2px 6px;
+    margin: 2px;
+    background: #1e293b;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #e2e8f0;
   }
 `
 
@@ -966,7 +1032,11 @@ class EVMapCard extends HTMLElement {
         anchor: 'center',
       })
         .setLngLat([station.lon, station.lat])
-        .setPopup(new maplibregl.Popup({ className: 'ev-map-popup', maxWidth: '280px' }).setHTML(this._popupHtml(station)))
+        .setPopup(
+          new maplibregl.Popup({ className: 'ev-map-popup', maxWidth: '280px' }).setDOMContent(
+            this._createStationPopupContent(station),
+          ),
+        )
         .addTo(this._map)
 
       this._stationMarkers.push(marker)
@@ -988,27 +1058,76 @@ class EVMapCard extends HTMLElement {
     return element
   }
 
-  private _popupHtml(station: EVStation) {
-    const connectorHtml =
-      station.connectors.length > 0
-        ? station.connectors
-            .map(
-              (connector) =>
-                `<span style="display:inline-block;padding:2px 6px;margin:2px;background:#1e293b;border-radius:4px;font-size:11px;color:#e2e8f0;">${connector.type}${connector.powerKW > 0 ? ` ${connector.powerKW} kW` : ''}</span>`,
-            )
-            .join('')
-        : '<span style="color:#64748b;font-size:11px;">No connector data</span>'
+  private _createStationPopupContent(station: EVStation) {
+    const content = document.createElement('div')
+    content.className = 'ev-popup-card'
 
-    return `
-      <div style="font-family:sans-serif;min-width:200px;">
-        <h3 style="margin:0 0 4px;font-size:13px;font-weight:600;color:#f1f5f9;">${station.name}</h3>
-        <p style="margin:0 0 8px;font-size:11px;color:#94a3b8;line-height:1.4;">${station.address}</p>
-        <div style="margin-bottom:8px;font-size:11px;display:flex;gap:8px;flex-wrap:wrap;">
-          <span><span style="color:#64748b;">Status: </span>${STATUS_LABEL[station.status] ?? 'Unknown'}</span>
-          <span style="color:#64748b;">${station.distanceKm} km</span>
-        </div>
-        <div style="display:flex;flex-wrap:wrap;">${connectorHtml}</div>
-      </div>`
+    const header = document.createElement('div')
+    header.className = 'ev-popup-header'
+
+    const title = document.createElement('h3')
+    title.className = 'ev-popup-title'
+    title.textContent = station.name
+
+    const routeBtn = document.createElement('button')
+    routeBtn.className = 'ev-popup-route-btn'
+    routeBtn.type = 'button'
+    routeBtn.title = 'Get route'
+    routeBtn.setAttribute('aria-label', `Get route to ${station.name}`)
+    routeBtn.innerHTML = ROUTE_ICON_SVG
+    routeBtn.addEventListener('click', (event) => {
+      event.stopPropagation()
+      this._requestRoute(station)
+    })
+
+    header.appendChild(title)
+    header.appendChild(routeBtn)
+
+    const address = document.createElement('p')
+    address.className = 'ev-popup-address'
+    address.textContent = station.address
+
+    const meta = document.createElement('div')
+    meta.className = 'ev-popup-meta'
+
+    const status = document.createElement('span')
+    const statusLabel = document.createElement('span')
+    statusLabel.className = 'ev-popup-muted'
+    statusLabel.textContent = 'Status: '
+    status.appendChild(statusLabel)
+    status.appendChild(document.createTextNode(STATUS_LABEL[station.status] ?? 'Unknown'))
+
+    const distance = document.createElement('span')
+    distance.className = 'ev-popup-muted'
+    distance.textContent = `${station.distanceKm} km`
+
+    meta.appendChild(status)
+    meta.appendChild(distance)
+
+    const connectors = document.createElement('div')
+    connectors.className = 'ev-popup-connectors'
+
+    if (station.connectors.length > 0) {
+      for (const connector of station.connectors) {
+        const chip = document.createElement('span')
+        chip.className = 'ev-popup-connector'
+        chip.textContent = `${connector.type}${connector.powerKW > 0 ? ` ${connector.powerKW} kW` : ''}`
+        connectors.appendChild(chip)
+      }
+    } else {
+      const empty = document.createElement('span')
+      empty.className = 'ev-popup-muted'
+      empty.style.fontSize = '11px'
+      empty.textContent = 'No connector data'
+      connectors.appendChild(empty)
+    }
+
+    content.appendChild(header)
+    content.appendChild(address)
+    content.appendChild(meta)
+    content.appendChild(connectors)
+
+    return content
   }
 
   private async _fetchConfig() {
@@ -1255,7 +1374,7 @@ class EVMapCard extends HTMLElement {
       const routeBtn = document.createElement('div')
       routeBtn.className = 'ev-station-list-route-btn'
       routeBtn.title = 'Get route'
-      routeBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 11C2 11 3 8 6 7C9 6 11 3 11 3" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/><path d="M9 3H11V5" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      routeBtn.innerHTML = ROUTE_ICON_SVG
       routeBtn.addEventListener('click', (e) => {
         e.stopPropagation()
         this._requestRoute(station)

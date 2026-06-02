@@ -1,7 +1,7 @@
 {
   "domain": "ha_ev_map",
   "name": "EV Map",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "documentation": "https://github.com/thititongumpun/ha-ev-map",
   "requirements": [],
   "dependencies": [],

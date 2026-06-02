@@ -221,6 +221,26 @@ const CARD_CSS = `
     white-space: nowrap;
     padding-top: 1px;
   }
+  .ev-pitch-toggle {
+    position: absolute;
+    top: 86px;
+    right: 10px;
+    width: 30px;
+    height: 30px;
+    background: rgba(15,23,42,0.92);
+    border: 1px solid #334155;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    user-select: none;
+  }
+  .ev-pitch-toggle:hover { background: rgba(30,41,59,0.97); }
+  .ev-pitch-toggle.active { background: rgba(30,41,59,0.97); border-color: #3b82f6; }
+  .ev-pitch-toggle.active svg path { stroke: #3b82f6; }
   .ev-style-toggle {
     position: absolute;
     top: 48px;
@@ -327,7 +347,9 @@ class EVMapCard extends HTMLElement {
   private _stationListToggle: HTMLDivElement | null = null
   private _stylePanel: HTMLDivElement | null = null
   private _styleToggle: HTMLDivElement | null = null
+  private _pitchToggle: HTMLDivElement | null = null
   private _activeStyleId = 'default'
+  private _pitchEnabled = false
   private _listOpen = false
   private _initialized = false
   private _centeredOnLocation = false
@@ -403,6 +425,8 @@ class EVMapCard extends HTMLElement {
     this._stationListToggle = null
     this._stylePanel = null
     this._styleToggle = null
+    this._pitchToggle = null
+    this._pitchEnabled = false
     this._listOpen = false
     this._initialized = false
     this._centeredOnLocation = false
@@ -484,11 +508,20 @@ class EVMapCard extends HTMLElement {
         styleToggle.classList.toggle('active', !open)
       })
 
+      const pitchToggle = document.createElement('div')
+      pitchToggle.className = 'ev-pitch-toggle'
+      pitchToggle.title = '3D view'
+      pitchToggle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1L12.5 4L7 7L1.5 4Z" stroke="#e2e8f0" stroke-width="1.2" stroke-linejoin="round"/><path d="M1.5 4L1.5 9L7 12L7 7Z" stroke="#e2e8f0" stroke-width="1.2" stroke-linejoin="round"/><path d="M12.5 4L12.5 9L7 12L7 7Z" stroke="#e2e8f0" stroke-width="1.2" stroke-linejoin="round"/></svg>`
+      pitchToggle.addEventListener('click', () => {
+        this._setPitch(!this._pitchEnabled)
+      })
+
       wrap.appendChild(mapContainer)
       wrap.appendChild(stationList)
       wrap.appendChild(toggle)
       wrap.appendChild(stylePanel)
       wrap.appendChild(styleToggle)
+      wrap.appendChild(pitchToggle)
       card.appendChild(wrap)
       this._root.replaceChildren(style, card)
 
@@ -498,6 +531,7 @@ class EVMapCard extends HTMLElement {
       this._stationListToggle = toggle
       this._stylePanel = stylePanel
       this._styleToggle = styleToggle
+      this._pitchToggle = pitchToggle
     }
 
     this._applyWrapperSize()
@@ -810,8 +844,9 @@ class EVMapCard extends HTMLElement {
     this._activeStyleId = id
     this._map.setStyle(entry.style as maplibregl.StyleSpecification | string)
     if (entry.pitch !== undefined) {
+      const targetPitch = entry.pitch
       this._map.once('style.load', () => {
-        this._map?.easeTo({ pitch: entry.pitch!, duration: 600 })
+        this._setPitch(targetPitch > 0)
       })
     }
     if (this._stylePanel) {
@@ -819,6 +854,13 @@ class EVMapCard extends HTMLElement {
         el.classList.toggle('selected', el.dataset.styleId === id)
       }
     }
+  }
+
+  private _setPitch(enabled: boolean) {
+    if (!this._map) return
+    this._pitchEnabled = enabled
+    this._map.easeTo({ pitch: enabled ? 45 : 0, duration: 600 })
+    this._pitchToggle?.classList.toggle('active', enabled)
   }
 
   private _updateStationList() {

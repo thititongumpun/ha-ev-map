@@ -133,9 +133,28 @@ const CARD_CSS = `
     width: 12px;
     height: 12px;
   }
+  .ev-station-list-toggle {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    width: 30px;
+    height: 30px;
+    background: rgba(15,23,42,0.92);
+    border: 1px solid #334155;
+    border-radius: 4px;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    user-select: none;
+  }
+  .ev-station-list-toggle:hover { background: rgba(30,41,59,0.97); }
+  .ev-station-list-toggle.active { background: rgba(30,41,59,0.97); border-color: #64748b; }
   .ev-station-list {
     position: absolute;
-    top: 90px;
+    bottom: 48px;
     left: 10px;
     width: 210px;
     max-height: calc(50% - 60px);
@@ -234,6 +253,8 @@ class EVMapCard extends HTMLElement {
   private _wrap: HTMLDivElement | null = null
   private _mapContainer: HTMLDivElement | null = null
   private _stationList: HTMLDivElement | null = null
+  private _stationListToggle: HTMLDivElement | null = null
+  private _listOpen = false
   private _initialized = false
   private _centeredOnLocation = false
   private _currentStations: EVStation[] = []
@@ -305,6 +326,8 @@ class EVMapCard extends HTMLElement {
     this._wrap = null
     this._mapContainer = null
     this._stationList = null
+    this._stationListToggle = null
+    this._listOpen = false
     this._initialized = false
     this._centeredOnLocation = false
     this._currentStations = []
@@ -339,14 +362,27 @@ class EVMapCard extends HTMLElement {
       listHeader.textContent = 'Stations'
       stationList.appendChild(listHeader)
 
+      const toggle = document.createElement('div')
+      toggle.className = 'ev-station-list-toggle'
+      toggle.innerHTML = `<svg width="14" height="12" viewBox="0 0 14 12" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="14" height="2" rx="1" fill="#e2e8f0"/><rect y="5" width="14" height="2" rx="1" fill="#e2e8f0"/><rect y="10" width="14" height="2" rx="1" fill="#e2e8f0"/></svg>`
+      toggle.addEventListener('click', () => {
+        this._listOpen = !this._listOpen
+        toggle.classList.toggle('active', this._listOpen)
+        if (this._stationList) {
+          this._stationList.style.display = this._listOpen && this._currentStations.length > 0 ? 'block' : 'none'
+        }
+      })
+
       wrap.appendChild(mapContainer)
       wrap.appendChild(stationList)
+      wrap.appendChild(toggle)
       card.appendChild(wrap)
       this._root.replaceChildren(style, card)
 
       this._wrap = wrap
       this._mapContainer = mapContainer
       this._stationList = stationList
+      this._stationListToggle = toggle
     }
 
     this._applyWrapperSize()
@@ -662,10 +698,12 @@ class EVMapCard extends HTMLElement {
 
     if (this._currentStations.length === 0) {
       this._stationList.style.display = 'none'
+      if (this._stationListToggle) this._stationListToggle.style.display = 'none'
       return
     }
 
-    this._stationList.style.display = 'block'
+    if (this._stationListToggle) this._stationListToggle.style.display = 'flex'
+    this._stationList.style.display = this._listOpen ? 'block' : 'none'
 
     for (let i = 0; i < this._currentStations.length; i++) {
       const station = this._currentStations[i]

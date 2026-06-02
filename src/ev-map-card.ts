@@ -1289,7 +1289,7 @@ class EVMapCard extends HTMLElement {
         label: 'AMap',
         bg: 'linear-gradient(145deg,#0097A7,#00BCD4)',
         icon: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 1C5.69 1 3 3.69 3 7c0 4.5 6 10 6 10s6-5.5 6-10c0-3.31-2.69-6-6-6zm0 8a2 2 0 110-4 2 2 0 010 4z" fill="white"/></svg>`,
-        url: `https://uri.amap.com/navigation?to=${station.lon},${station.lat},${encodeURIComponent(station.name)}&mode=car&callnative=1`,
+        url: `https://uri.amap.com/navigation?to=${station.lon},${station.lat},${encodeURIComponent(station.name)}&mode=driving&callnative=1`,
       },
       {
         label: 'Waze',

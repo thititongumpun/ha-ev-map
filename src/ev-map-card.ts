@@ -39,27 +39,26 @@ const STATUS_LABEL: Record<string, string> = {
   unknown: 'Unknown',
 }
 
-const BRAND_COLOR: Record<string, string> = {
-  'ea anywhere': '#7c3aed',
-  elex: '#f97316',
-  elexa: '#16a34a',
-  'ev station pluz': '#0f766e',
-  ptt: '#0ea5e9',
-  'pea volta': '#7e22ce',
-  'mea ev': '#f59e0b',
-  sharge: '#ec4899',
-  revolta: '#ef4444',
-  chargenow: '#2563eb',
-  'charge+': '#06b6d4',
-  altervim: '#84cc16',
-  'on-ion': '#14b8a6',
-  tesla: '#dc2626',
-}
-
-const BRAND_LOGO_URL: Record<string, string> = {
-  'ea anywhere': 'https://play-lh.googleusercontent.com/hCtnvO05py7_9jjNQUtXRpd6MhKo-IcvzzVvERkIQ-YG1wYil0FIlyEbHwNrxVeLHgSo',
-  'on-ion': 'https://play-lh.googleusercontent.com/Yq7oyNIvAAkuc69fG51sbAQS4otJxbObbt3xdr8tXxXyUdq4tVGtfgeKuptveGdP1srxaHVrNPzOYcfaEQ',
-}
+const BRAND_LOGOS: Array<{ path: string; aliases: string[] }> = [
+  { path: 'brand/altervim.png', aliases: ['altervim'] },
+  { path: 'brand/charge24.jpg', aliases: ['charge24', 'charge 24'] },
+  { path: 'brand/ea-anywhere.png', aliases: ['ea anywhere', 'energy absolute'] },
+  { path: 'brand/elexa.png', aliases: ['elexa', 'elex by egat', 'egat'] },
+  { path: 'brand/ev_station_pluz.jpg', aliases: ['ev station pluz', 'ev station plu', 'pluz', 'ptt'] },
+  { path: 'brand/evolt.jpg', aliases: ['evolt'] },
+  { path: 'brand/ginka.png', aliases: ['ginka'] },
+  { path: 'brand/igreen.png', aliases: ['igreen', 'i green'] },
+  { path: 'brand/mea.jpg', aliases: ['mea ev', 'mea'] },
+  { path: 'brand/mg.jpg', aliases: ['mg'] },
+  { path: 'brand/on-ion.png', aliases: ['on-ion', 'on ion', 'onion', 'arun plus'] },
+  { path: 'brand/pea_volta.png', aliases: ['pea volta', 'volta'] },
+  { path: 'brand/rever.png', aliases: ['rever'] },
+  { path: 'brand/sharge.png', aliases: ['sharge'] },
+  { path: 'brand/shell.png', aliases: ['shell'] },
+  { path: 'brand/spark.jpg', aliases: ['spark'] },
+  { path: 'brand/susco.png', aliases: ['susco'] },
+  { path: 'brand/tesla.png', aliases: ['tesla'] },
+]
 
 const ROUTE_ICON_SVG = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 11C2 11 3 8 6 7C9 6 11 3 11 3" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/><path d="M9 3H11V5" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 
@@ -201,10 +200,16 @@ const CARD_CSS = `
     box-shadow: 0 2px 8px rgba(0,0,0,0.38);
     overflow: hidden;
   }
+  .ev-map-marker-station.has-logo {
+    padding: 0;
+    border-color: rgba(255,255,255,0.9);
+    background: transparent !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.38) !important;
+  }
   .ev-brand-logo {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     display: block;
   }
   .ev-brand-fallback {
@@ -387,6 +392,9 @@ const CARD_CSS = `
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+  .ev-station-list-dot.has-logo {
+    background: transparent !important;
   }
   .ev-station-list-name {
     font-size: 11px;
@@ -573,6 +581,9 @@ const CARD_CSS = `
     align-items: center;
     justify-content: center;
     box-shadow: 0 2px 8px rgba(0,0,0,0.32);
+  }
+  .ev-popup-brand.has-logo {
+    background: transparent !important;
   }
   .ev-popup-title {
     flex: 1;
@@ -1013,7 +1024,7 @@ class EVMapCard extends HTMLElement {
       style: CARTO_DARK_STYLE,
       center: THAILAND_CENTER,
       zoom: 10,
-      attributionControl: true,
+      attributionControl: {},
     })
 
     this._map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-left')
@@ -1167,6 +1178,7 @@ class EVMapCard extends HTMLElement {
       element.style.boxShadow = `0 0 6px ${color}80`
       const station = detail && typeof detail === 'object' ? detail : undefined
       element.title = station?.brand || station?.name || 'EV station'
+      if (this._stationLogoPath(station)) element.classList.add('has-logo')
       element.appendChild(this._createBrandVisual(station))
     }
 
@@ -1194,29 +1206,40 @@ class EVMapCard extends HTMLElement {
   private _stationMarkerLabel(station?: EVStation) {
     const text = (station?.brand || station?.name || 'EV').trim()
     const words = text.match(/[A-Za-z0-9]+/g) ?? []
-    if (words.length >= 2) return `${words[0][0]}${words[1][0]}`.toUpperCase()
+    if (words.length >= 2) return `${words[0]![0]}${words[1][0]}`.toUpperCase()
     return (words[0] ?? text).slice(0, 3).toUpperCase()
   }
 
   private _stationMarkerColor(station: EVStation) {
-    const brand = (station.brand || '').toLowerCase().replace(/\s+/g, ' ').trim()
-    return BRAND_COLOR[brand] ?? STATUS_COLOR[station.status] ?? STATUS_COLOR['unknown']
+    return STATUS_COLOR[station.status] ?? STATUS_COLOR['unknown']
   }
 
-  private _stationLogoUrl(station?: EVStation) {
-    const brand = (station?.brand || '').toLowerCase().replace(/\s+/g, ' ').trim()
-    return BRAND_LOGO_URL[brand]
+  private _stationLogoPath(station?: EVStation) {
+    const haystack = this._normaliseBrandText(`${station?.brand ?? ''} ${station?.name ?? ''}`)
+    if (!haystack) return undefined
+
+    const logo = BRAND_LOGOS.find((entry) =>
+      entry.aliases.some((alias) => haystack.includes(this._normaliseBrandText(alias))),
+    )
+    return logo?.path
+  }
+
+  private _normaliseBrandText(value: string) {
+    return value
+      .toLowerCase()
+      .replace(/[^a-z0-9+]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
   }
 
   private _createBrandVisual(station?: EVStation) {
-    const logoUrl = this._stationLogoUrl(station)
-    if (logoUrl) {
+    const logoPath = this._stationLogoPath(station)
+    if (logoPath) {
       const img = document.createElement('img')
       img.className = 'ev-brand-logo'
-      img.src = logoUrl
+      img.src = `/ha_ev_map/${logoPath}`
       img.alt = station?.brand || station?.name || 'EV station'
       img.loading = 'lazy'
-      img.referrerPolicy = 'no-referrer'
       img.addEventListener('error', () => {
         img.replaceWith(this._createBrandFallback(station))
       })
@@ -1241,7 +1264,11 @@ class EVMapCard extends HTMLElement {
 
     const brand = document.createElement('div')
     brand.className = 'ev-popup-brand'
-    brand.style.background = this._stationMarkerColor(station)
+    if (this._stationLogoPath(station)) {
+      brand.classList.add('has-logo')
+    } else {
+      brand.style.background = this._stationMarkerColor(station)
+    }
     brand.appendChild(this._createBrandVisual(station))
 
     const title = document.createElement('h3')
@@ -1540,7 +1567,11 @@ class EVMapCard extends HTMLElement {
 
       const dot = document.createElement('div')
       dot.className = 'ev-station-list-dot'
-      dot.style.background = color
+      if (this._stationLogoPath(station)) {
+        dot.classList.add('has-logo')
+      } else {
+        dot.style.background = color
+      }
       dot.title = station.brand || station.name
       dot.appendChild(this._createBrandVisual(station))
 

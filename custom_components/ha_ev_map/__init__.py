@@ -14,8 +14,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     await hass.http.async_register_static_paths(
         [
             StaticPathConfig(
-                url_path=f"/{DOMAIN}/ev-map-card.js",
-                path=hass.config.path(f"custom_components/{DOMAIN}/www/ev-map-card.js"),
+                url_path=f"/{DOMAIN}",
+                path=hass.config.path(f"custom_components/{DOMAIN}/www"),
                 cache_headers=False,
             )
         ]

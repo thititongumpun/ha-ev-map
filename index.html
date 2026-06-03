@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EV Map Card Dev</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #111827;
+        color: #e5e7eb;
+        font-family: system-ui, sans-serif;
+      }
+
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      h1 {
+        margin: 0 0 16px;
+        font-size: 18px;
+        font-weight: 650;
+      }
+
+      #dev-status {
+        margin: 0 0 12px;
+        color: #9ca3af;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>EV Map Card Dev</h1>
+      <p id="dev-status">Loading real Home Assistant station data...</p>
+      <ev-map-card></ev-map-card>
+    </main>
+    <script type="module" src="/src/dev-harness.ts"></script>
+  </body>
+</html>

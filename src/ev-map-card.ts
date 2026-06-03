@@ -43,7 +43,7 @@ const BRAND_LOGOS: Array<{ path: string; aliases: string[] }> = [
   { path: 'brand/altervim.png', aliases: ['altervim'] },
   { path: 'brand/charge24.jpg', aliases: ['charge24', 'charge 24'] },
   { path: 'brand/ea-anywhere.png', aliases: ['ea anywhere', 'energy absolute'] },
-  { path: 'brand/elexa.png', aliases: ['elexa', 'elex by egat', 'egat'] },
+  { path: 'brand/elexa.png', aliases: ['elexa', 'elex by egat', 'egat', 'elex'] },
   { path: 'brand/ev_station_pluz.jpg', aliases: ['ev station pluz', 'ev station plu', 'pluz', 'ptt'] },
   { path: 'brand/evolt.jpg', aliases: ['evolt'] },
   { path: 'brand/ginka.png', aliases: ['ginka'] },
@@ -202,9 +202,9 @@ const CARD_CSS = `
   }
   .ev-map-marker-station.has-logo {
     padding: 0;
-    border-color: rgba(255,255,255,0.9);
+    border: 0;
     background: transparent !important;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.38) !important;
+    box-shadow: none !important;
   }
   .ev-brand-logo {
     width: 100%;
@@ -394,6 +394,7 @@ const CARD_CSS = `
     justify-content: center;
   }
   .ev-station-list-dot.has-logo {
+    border: 0;
     background: transparent !important;
   }
   .ev-station-list-name {
@@ -583,7 +584,9 @@ const CARD_CSS = `
     box-shadow: 0 2px 8px rgba(0,0,0,0.32);
   }
   .ev-popup-brand.has-logo {
+    border: 0;
     background: transparent !important;
+    box-shadow: none;
   }
   .ev-popup-title {
     flex: 1;

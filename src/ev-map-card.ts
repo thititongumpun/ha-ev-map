@@ -56,6 +56,11 @@ const BRAND_COLOR: Record<string, string> = {
   tesla: '#dc2626',
 }
 
+const BRAND_LOGO_URL: Record<string, string> = {
+  'ea anywhere': 'https://play-lh.googleusercontent.com/hCtnvO05py7_9jjNQUtXRpd6MhKo-IcvzzVvERkIQ-YG1wYil0FIlyEbHwNrxVeLHgSo',
+  'on-ion': 'https://play-lh.googleusercontent.com/Yq7oyNIvAAkuc69fG51sbAQS4otJxbObbt3xdr8tXxXyUdq4tVGtfgeKuptveGdP1srxaHVrNPzOYcfaEQ',
+}
+
 const ROUTE_ICON_SVG = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 11C2 11 3 8 6 7C9 6 11 3 11 3" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/><path d="M9 3H11V5" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 
 const THAILAND_CENTER: [number, number] = [100.523186, 13.736717]
@@ -194,6 +199,18 @@ const CARD_CSS = `
     letter-spacing: 0;
     border-color: rgba(255,255,255,0.78);
     box-shadow: 0 2px 8px rgba(0,0,0,0.38);
+    overflow: hidden;
+  }
+  .ev-brand-logo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .ev-brand-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .ev-station-list-toggle {
     position: absolute;
@@ -356,11 +373,20 @@ const CARD_CSS = `
     white-space: nowrap;
   }
   .ev-station-list-dot {
-    width: 7px;
-    height: 7px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
     flex-shrink: 0;
-    margin-top: 3px;
+    margin-top: 1px;
+    color: #f8fafc;
+    font-size: 7px;
+    font-weight: 800;
+    line-height: 1;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .ev-station-list-name {
     font-size: 11px;
@@ -531,6 +557,22 @@ const CARD_CSS = `
     align-items: flex-start;
     gap: 8px;
     margin-bottom: 4px;
+  }
+  .ev-popup-brand {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.6);
+    color: #f8fafc;
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.32);
   }
   .ev-popup-title {
     flex: 1;
@@ -1124,8 +1166,8 @@ class EVMapCard extends HTMLElement {
       element.style.background = color
       element.style.boxShadow = `0 0 6px ${color}80`
       const station = detail && typeof detail === 'object' ? detail : undefined
-      element.textContent = this._stationMarkerLabel(station)
       element.title = station?.brand || station?.name || 'EV station'
+      element.appendChild(this._createBrandVisual(station))
     }
 
     return element
@@ -1161,12 +1203,46 @@ class EVMapCard extends HTMLElement {
     return BRAND_COLOR[brand] ?? STATUS_COLOR[station.status] ?? STATUS_COLOR['unknown']
   }
 
+  private _stationLogoUrl(station?: EVStation) {
+    const brand = (station?.brand || '').toLowerCase().replace(/\s+/g, ' ').trim()
+    return BRAND_LOGO_URL[brand]
+  }
+
+  private _createBrandVisual(station?: EVStation) {
+    const logoUrl = this._stationLogoUrl(station)
+    if (logoUrl) {
+      const img = document.createElement('img')
+      img.className = 'ev-brand-logo'
+      img.src = logoUrl
+      img.alt = station?.brand || station?.name || 'EV station'
+      img.loading = 'lazy'
+      img.referrerPolicy = 'no-referrer'
+      img.addEventListener('error', () => {
+        img.replaceWith(this._createBrandFallback(station))
+      })
+      return img
+    }
+    return this._createBrandFallback(station)
+  }
+
+  private _createBrandFallback(station?: EVStation) {
+    const fallback = document.createElement('span')
+    fallback.className = 'ev-brand-fallback'
+    fallback.textContent = this._stationMarkerLabel(station)
+    return fallback
+  }
+
   private _createStationPopupContent(station: EVStation) {
     const content = document.createElement('div')
     content.className = 'ev-popup-card'
 
     const header = document.createElement('div')
     header.className = 'ev-popup-header'
+
+    const brand = document.createElement('div')
+    brand.className = 'ev-popup-brand'
+    brand.style.background = this._stationMarkerColor(station)
+    brand.appendChild(this._createBrandVisual(station))
 
     const title = document.createElement('h3')
     title.className = 'ev-popup-title'
@@ -1183,6 +1259,7 @@ class EVMapCard extends HTMLElement {
       this._requestRoute(station)
     })
 
+    header.appendChild(brand)
     header.appendChild(title)
 
     const address = document.createElement('p')
@@ -1451,7 +1528,7 @@ class EVMapCard extends HTMLElement {
 
     for (let i = 0; i < this._currentStations.length; i++) {
       const station = this._currentStations[i]
-      const color = STATUS_COLOR[station.status] ?? STATUS_COLOR['unknown']
+      const color = this._stationMarkerColor(station)
 
       const item = document.createElement('div')
       item.className = 'ev-station-list-item'
@@ -1464,6 +1541,8 @@ class EVMapCard extends HTMLElement {
       const dot = document.createElement('div')
       dot.className = 'ev-station-list-dot'
       dot.style.background = color
+      dot.title = station.brand || station.name
+      dot.appendChild(this._createBrandVisual(station))
 
       const name = document.createElement('span')
       name.className = 'ev-station-list-name'

@@ -38,7 +38,7 @@ Copy `custom_components/ha_ev_map/` into your HA `config/custom_components/` dir
 3. Add the card JS as a Lovelace resource — **Settings → Dashboards → Resources → Add**:
 
    ```
-   URL:  /ha_ev_map/ev-map-card.js?v=0.3.5
+   URL:  /ha_ev_map/ev-map-card.js?v=0.3.6
    Type: JavaScript Module
    ```
 
@@ -71,7 +71,7 @@ height: 400
 Home Assistant and browsers cache Lovelace module resources by URL. After updating the card JavaScript, force a fresh copy by bumping the resource URL version query to the installed release version and hard-refreshing the browser:
 
 ```
-/ha_ev_map/ev-map-card.js?v=0.3.5
+/ha_ev_map/ev-map-card.js?v=0.3.6
 ```
 
 ## Features
@@ -79,7 +79,7 @@ Home Assistant and browsers cache Lovelace module resources by URL. After updati
 ### Map
 
 - Centers on the configured location entity and places a blue marker there. If the entity exposes `course`, `heading`, `bearing`, or `direction`, the marker shows a directional heading arrow.
-- Fetches EV stations within the configured radius from TomTom and renders them as compact brand badges.
+- Fetches EV stations within the configured radius from TomTom and renders them as compact brand badges. Known brand logos are used for EA Anywhere and on-ion, with initials as a fallback.
 - Auto-refreshes every 30 seconds.
 - Fullscreen button (top-right). Press `Esc` or click again to exit.
 

@@ -503,6 +503,11 @@ const CARD_CSS = `
   .ev-popup-route-btn:hover {
     background: rgba(59,130,246,0.2);
   }
+  .ev-popup-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
   .ev-popup-address {
     margin: 0 0 8px;
     font-size: 11px;
@@ -1081,7 +1086,6 @@ class EVMapCard extends HTMLElement {
     })
 
     header.appendChild(title)
-    header.appendChild(routeBtn)
 
     const address = document.createElement('p')
     address.className = 'ev-popup-address'
@@ -1126,6 +1130,11 @@ class EVMapCard extends HTMLElement {
     content.appendChild(address)
     content.appendChild(meta)
     content.appendChild(connectors)
+
+    const footer = document.createElement('div')
+    footer.className = 'ev-popup-footer'
+    footer.appendChild(routeBtn)
+    content.appendChild(footer)
 
     return content
   }
@@ -1275,8 +1284,8 @@ class EVMapCard extends HTMLElement {
     const appDefs = [
       {
         label: 'Apple Maps',
-        bg: 'linear-gradient(145deg,#1c1c1e,#3a3a3c)',
-        icon: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2C5.13 2 2 5.13 2 9s3.13 7 7 7 7-3.13 7-7-3.13-7-7-7zm.5 10.5h-1v-5h1v5zm0-6.5h-1V5h1v1z" fill="white" opacity="0.9"/></svg>`,
+        bg: 'linear-gradient(145deg,#34d399 0%,#60a5fa 58%,#f87171 100%)',
+        icon: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3.5 5.2L7.6 3.6L12.4 5.2L16.5 3.6V14.8L12.4 16.4L7.6 14.8L3.5 16.4V5.2Z" fill="white" fill-opacity="0.9"/><path d="M7.6 3.6V14.8M12.4 5.2V16.4" stroke="#1e293b" stroke-opacity="0.25" stroke-width="1"/><path d="M5 11.8C6.9 9.8 8.9 9 11 9.2C12.5 9.3 13.6 8.8 15 7.2" stroke="#2563eb" stroke-width="1.4" stroke-linecap="round"/><circle cx="15" cy="7.2" r="1.4" fill="#ef4444"/></svg>`,
         url: `https://maps.apple.com/?daddr=${station.lat},${station.lon}&dirflg=d`,
       },
       {

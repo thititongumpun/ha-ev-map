@@ -21,6 +21,7 @@ class EVStation:
     address: str
     lat: float
     lon: float
+    brand: str = ""
     connectors: list[Connector] = field(default_factory=list)
     status: str = "unknown"
     distance_km: Optional[float] = None
@@ -50,6 +51,38 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * R * math.asin(math.sqrt(a))
 
 
+def _extract_brand(result: dict) -> str:
+    poi = result.get("poi", {})
+    for brand in poi.get("brands") or []:
+        name = str(brand.get("name", "")).strip()
+        if name:
+            return name
+
+    name = str(poi.get("name", "")).strip()
+    lower_name = name.lower()
+    known_brands = {
+        "ea anywhere": "EA Anywhere",
+        "elex": "Elex",
+        "ev station plu": "EV Station PluZ",
+        "ptt": "PTT",
+        "pea volta": "PEA Volta",
+        "volta": "PEA Volta",
+        "mea ev": "MEA EV",
+        "sharge": "Sharge",
+        "revolta": "Revolta",
+        "chargenow": "ChargeNow",
+        "charge+": "Charge+",
+        "altervim": "Altervim",
+        "on-ion": "on-ion",
+        "elexa": "EleXA",
+        "tesla": "Tesla",
+    }
+    for needle, brand in known_brands.items():
+        if needle in lower_name:
+            return brand
+    return name.split(" - ", 1)[0].strip()
+
+
 def _normalise(result: dict, center_lat: float, center_lon: float) -> Optional[EVStation]:
     charging_park = result.get("chargingPark", {})
     connectors_data = charging_park.get("connectors") or []
@@ -74,6 +107,7 @@ def _normalise(result: dict, center_lat: float, center_lon: float) -> Optional[E
         address=result.get("address", {}).get("freeformAddress", ""),
         lat=lat,
         lon=lon,
+        brand=_extract_brand(result),
         connectors=connectors,
         distance_km=round(_haversine_km(center_lat, center_lon, lat, lon), 2),
     )

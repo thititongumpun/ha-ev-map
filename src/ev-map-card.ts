@@ -13,13 +13,14 @@ interface EVStation {
   address: string
   lat: number
   lon: number
+  brand?: string
   connectors: Connector[]
   status: string
   distanceKm: number
 }
 
 interface StationsResponse {
-  center: { latitude: number; longitude: number; entityId: string }
+  center: { latitude: number; longitude: number; entityId: string; heading?: number | null }
   radiusMeters: number
   stations: EVStation[]
 }
@@ -36,6 +37,23 @@ const STATUS_LABEL: Record<string, string> = {
   busy: 'Busy',
   offline: 'Offline',
   unknown: 'Unknown',
+}
+
+const BRAND_COLOR: Record<string, string> = {
+  'ea anywhere': '#7c3aed',
+  elex: '#f97316',
+  elexa: '#16a34a',
+  'ev station pluz': '#0f766e',
+  ptt: '#0ea5e9',
+  'pea volta': '#7e22ce',
+  'mea ev': '#f59e0b',
+  sharge: '#ec4899',
+  revolta: '#ef4444',
+  chargenow: '#2563eb',
+  'charge+': '#06b6d4',
+  altervim: '#84cc16',
+  'on-ion': '#14b8a6',
+  tesla: '#dc2626',
 }
 
 const ROUTE_ICON_SVG = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 11C2 11 3 8 6 7C9 6 11 3 11 3" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/><path d="M9 3H11V5" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
@@ -131,15 +149,51 @@ const CARD_CSS = `
     cursor: pointer;
   }
   .ev-map-marker-location {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     background: #3b82f6;
     border-color: #fff;
     box-shadow: 0 0 10px #3b82f680;
+    position: relative;
+  }
+  .ev-map-marker-location-heading {
+    position: absolute;
+    left: 50%;
+    top: -12px;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 13px solid #3b82f6;
+    transform-origin: 50% 21px;
+    filter: drop-shadow(0 0 4px rgba(59,130,246,0.7));
+  }
+  .ev-map-marker-location-heading::after {
+    content: '';
+    position: absolute;
+    left: -3px;
+    top: 3px;
+    width: 0;
+    height: 0;
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    border-bottom: 8px solid #bfdbfe;
   }
   .ev-map-marker-station {
-    width: 12px;
-    height: 12px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #f8fafc;
+    font-size: 8px;
+    font-weight: 800;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0;
+    border-color: rgba(255,255,255,0.78);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.38);
   }
   .ev-station-list-toggle {
     position: absolute;
@@ -1007,13 +1061,14 @@ class EVMapCard extends HTMLElement {
 
     this._clearStationMarkers()
 
-    const { latitude, longitude } = data.center
+    const { latitude, longitude, heading } = data.center
 
     if (this._locationMarker) {
       this._locationMarker.setLngLat([longitude, latitude])
+      this._updateLocationHeading(heading)
     } else {
       this._locationMarker = new maplibregl.Marker({
-        element: this._createMarkerElement('location'),
+        element: this._createMarkerElement('location', undefined, heading),
         anchor: 'center',
       })
         .setLngLat([longitude, latitude])
@@ -1031,9 +1086,9 @@ class EVMapCard extends HTMLElement {
     }
 
     for (const station of data.stations) {
-      const color = STATUS_COLOR[station.status] ?? STATUS_COLOR['unknown']
+      const color = this._stationMarkerColor(station)
       const marker = new maplibregl.Marker({
-        element: this._createMarkerElement('station', color),
+        element: this._createMarkerElement('station', color, station),
         anchor: 'center',
       })
         .setLngLat([station.lon, station.lat])
@@ -1051,16 +1106,59 @@ class EVMapCard extends HTMLElement {
     this._updateStationList()
   }
 
-  private _createMarkerElement(type: 'location' | 'station', color?: string) {
+  private _createMarkerElement(type: 'location', color?: string, heading?: number | null): HTMLDivElement
+  private _createMarkerElement(type: 'station', color?: string, station?: EVStation): HTMLDivElement
+  private _createMarkerElement(type: 'location' | 'station', color?: string, detail?: EVStation | number | null) {
     const element = document.createElement('div')
     element.className = `ev-map-marker ev-map-marker-${type}`
 
-    if (color) {
+    if (type === 'location') {
+      const heading = typeof detail === 'number' ? detail : null
+      if (heading !== null) {
+        const arrow = document.createElement('span')
+        arrow.className = 'ev-map-marker-location-heading'
+        arrow.style.transform = `translateX(-50%) rotate(${heading}deg)`
+        element.appendChild(arrow)
+      }
+    } else if (color) {
       element.style.background = color
       element.style.boxShadow = `0 0 6px ${color}80`
+      const station = detail && typeof detail === 'object' ? detail : undefined
+      element.textContent = this._stationMarkerLabel(station)
+      element.title = station?.brand || station?.name || 'EV station'
     }
 
     return element
+  }
+
+  private _updateLocationHeading(heading?: number | null) {
+    const element = this._locationMarker?.getElement()
+    if (!element) return
+
+    let arrow = element.querySelector<HTMLElement>('.ev-map-marker-location-heading')
+    if (typeof heading !== 'number') {
+      arrow?.remove()
+      return
+    }
+
+    if (!arrow) {
+      arrow = document.createElement('span')
+      arrow.className = 'ev-map-marker-location-heading'
+      element.appendChild(arrow)
+    }
+    arrow.style.transform = `translateX(-50%) rotate(${heading}deg)`
+  }
+
+  private _stationMarkerLabel(station?: EVStation) {
+    const text = (station?.brand || station?.name || 'EV').trim()
+    const words = text.match(/[A-Za-z0-9]+/g) ?? []
+    if (words.length >= 2) return `${words[0][0]}${words[1][0]}`.toUpperCase()
+    return (words[0] ?? text).slice(0, 3).toUpperCase()
+  }
+
+  private _stationMarkerColor(station: EVStation) {
+    const brand = (station.brand || '').toLowerCase().replace(/\s+/g, ' ').trim()
+    return BRAND_COLOR[brand] ?? STATUS_COLOR[station.status] ?? STATUS_COLOR['unknown']
   }
 
   private _createStationPopupContent(station: EVStation) {

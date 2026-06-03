@@ -8,6 +8,17 @@ from .api import EVStation, search_ev_stations_nearby
 from .const import CONF_LOCATION_ENTITY, CONF_RADIUS, CONF_TOMTOM_API_KEY, DEFAULT_RADIUS, DOMAIN
 
 
+def _location_heading(attributes: dict) -> float | None:
+    for key in ("course", "heading", "bearing", "direction"):
+        value = attributes.get(key)
+        try:
+            heading = float(value)
+        except (TypeError, ValueError):
+            continue
+        return heading % 360
+    return None
+
+
 class EVMapStationsView(HomeAssistantView):
     url = "/api/ha_ev_map/stations"
     name = "api:ha_ev_map:stations"
@@ -52,6 +63,7 @@ class EVMapStationsView(HomeAssistantView):
                     "latitude": lat,
                     "longitude": lon,
                     "entityId": entity_id,
+                    "heading": _location_heading(state.attributes),
                 },
                 "radiusMeters": radius,
                 "stations": [_station_dict(s) for s in stations],
@@ -144,6 +156,7 @@ def _station_dict(station: EVStation) -> dict:
         "address": station.address,
         "lat": station.lat,
         "lon": station.lon,
+        "brand": station.brand,
         "connectors": [
             {"type": c.type, "powerKW": c.power_kw, "status": c.status}
             for c in station.connectors

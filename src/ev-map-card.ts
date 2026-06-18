@@ -670,8 +670,8 @@ class EVMapCard extends HTMLElement {
   private _pitchToggle: HTMLDivElement | null = null
   private _trafficToggle: HTMLDivElement | null = null
   private _locateBtn: HTMLDivElement | null = null
-  private _activeStyleId = 'default'
-  private _pitchEnabled = false
+  private _activeStyleId = 'liberty'
+  private _pitchEnabled = true
   private _trafficEnabled = false
   private _tomtomKey: string | null = null
   private _routePanel: HTMLDivElement | null = null
@@ -1022,11 +1022,13 @@ class EVMapCard extends HTMLElement {
     this._initialized = true
     this._syncMapContainerSize('initialize map')
 
+    const initialStyle = MAP_STYLES.find((s) => s.id === this._activeStyleId) ?? MAP_STYLES[0]
     this._map = new maplibregl.Map({
       container: this._mapContainer,
-      style: CARTO_DARK_STYLE,
+      style: initialStyle.style,
       center: THAILAND_CENTER,
       zoom: 10,
+      pitch: initialStyle.pitch ?? 0,
       attributionControl: {},
     })
 

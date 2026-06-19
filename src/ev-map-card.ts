@@ -671,7 +671,7 @@ class EVMapCard extends HTMLElement {
   private _trafficToggle: HTMLDivElement | null = null
   private _locateBtn: HTMLDivElement | null = null
   private _activeStyleId = 'liberty'
-  private _pitchEnabled = true
+  private _pitchEnabled = false
   private _trafficEnabled = false
   private _tomtomKey: string | null = null
   private _routePanel: HTMLDivElement | null = null

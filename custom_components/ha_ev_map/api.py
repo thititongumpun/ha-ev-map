@@ -132,8 +132,8 @@ async def search_ev_stations_nearby(
     api_key: str,
     lat: float,
     lon: float,
-    radius_meters: int = 5000,
-    limit: int = 20,
+    radius_meters: int = 10000,
+    limit: int = 50,
 ) -> list[EVStation]:
     params = {
         "key": api_key,

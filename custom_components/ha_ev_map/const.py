@@ -5,4 +5,4 @@ CONF_LOCATION_ENTITY = "location_entity"
 CONF_MAPBOX_TOKEN = "mapbox_token"
 CONF_RADIUS = "radius"
 
-DEFAULT_RADIUS = 5000
+DEFAULT_RADIUS = 10000

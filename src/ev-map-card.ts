@@ -58,6 +58,10 @@ const BRAND_LOGOS: Array<{ path: string; aliases: string[] }> = [
   { path: 'brand/spark.jpg', aliases: ['spark'] },
   { path: 'brand/susco.png', aliases: ['susco'] },
   { path: 'brand/tesla.png', aliases: ['tesla'] },
+  { path: 'brand/onecharge.png', aliases: ['onecharge'] },
+  { path: 'brand/charge+.png', aliases: ['charge+'] },
+  { path: 'brand/qcharge.png', aliases: ['qcharge'] }
+
 ]
 
 const ROUTE_ICON_SVG = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 11C2 11 3 8 6 7C9 6 11 3 11 3" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/><path d="M9 3H11V5" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`

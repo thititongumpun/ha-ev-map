@@ -214,6 +214,7 @@ const CARD_CSS = `
     height: 100%;
     object-fit: contain;
     display: block;
+    border-radius: 4px;
   }
   .ev-brand-fallback {
     display: inline-flex;

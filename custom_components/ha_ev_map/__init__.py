@@ -24,9 +24,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    hass.http.register_view(EVMapStationsView(hass))
-    hass.http.register_view(EVMapConfigView(hass))
-    hass.http.register_view(EVMapRouteView(hass))
+    # Views resolve the config entry per-request, so register them only once —
+    # re-registering on entry reload (e.g. after reconfigure) raises on duplicate routes.
+    if not hass.data.get(DOMAIN):
+        hass.data[DOMAIN] = True
+        hass.http.register_view(EVMapStationsView(hass))
+        hass.http.register_view(EVMapConfigView(hass))
+        hass.http.register_view(EVMapRouteView(hass))
     return True
 
 

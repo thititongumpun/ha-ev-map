@@ -684,6 +684,8 @@ class EVMapCard extends HTMLElement {
   private _listOpen = false
   private _initialized = false
   private _centeredOnLocation = false
+  private _lastRenderedCenter: { lat: number; lon: number } | null = null
+  private _fetching = false
   private _currentStations: EVStation[] = []
 
   private static _cachedData: StationsResponse | null = null
@@ -716,6 +718,12 @@ class EVMapCard extends HTMLElement {
       this._scheduleMapInitialize()
     } else if (this._map) {
       this._resizeMap('hass update')
+      const state = EVMapCard._lastEntityId ? hass.states[EVMapCard._lastEntityId] : null
+      const lat = state?.attributes?.latitude
+      const lon = state?.attributes?.longitude
+      if (lat !== undefined && lon !== undefined && !this._positionUnchanged(lat, lon)) {
+        this._fetchAndUpdate()
+      }
     }
   }
 
@@ -767,6 +775,8 @@ class EVMapCard extends HTMLElement {
     this._listOpen = false
     this._initialized = false
     this._centeredOnLocation = false
+    this._lastRenderedCenter = null
+    this._fetching = false
     this._currentStations = []
     document.removeEventListener('fullscreenchange', this._fullscreenChangeHandler)
     this._root.replaceChildren()
@@ -1095,7 +1105,7 @@ class EVMapCard extends HTMLElement {
   }
 
   private async _fetchAndUpdate() {
-    if (!this._hass) return
+    if (!this._hass || this._fetching) return
 
     if (EVMapCard._cachedData && EVMapCard._lastEntityId) {
       const state = this._hass.states[EVMapCard._lastEntityId]
@@ -1107,6 +1117,7 @@ class EVMapCard extends HTMLElement {
       }
     }
 
+    this._fetching = true
     try {
       const data: StationsResponse = await this._hass.callApi('GET', 'ha_ev_map/stations')
       EVMapCard._cachedData = data
@@ -1115,6 +1126,8 @@ class EVMapCard extends HTMLElement {
       this._renderStations(data)
     } catch {
       // map stays visible if request fails
+    } finally {
+      this._fetching = false
     }
   }
 
@@ -1145,7 +1158,14 @@ class EVMapCard extends HTMLElement {
     if (!this._centeredOnLocation) {
       this._map.flyTo({ center: [longitude, latitude], zoom: 13, essential: true })
       this._centeredOnLocation = true
+    } else if (
+      this._lastRenderedCenter &&
+      (Math.abs(latitude - this._lastRenderedCenter.lat) > 0.0001 ||
+        Math.abs(longitude - this._lastRenderedCenter.lon) > 0.0001)
+    ) {
+      this._map.easeTo({ center: [longitude, latitude] })
     }
+    this._lastRenderedCenter = { lat: latitude, lon: longitude }
 
     for (const station of data.stations) {
       const color = this._stationMarkerColor(station)

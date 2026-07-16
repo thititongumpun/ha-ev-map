@@ -10,6 +10,16 @@
           "mapbox_token": "Mapbox Token (optional)",
           "radius": "Search Radius (meters)"
         }
+      },
+      "reconfigure": {
+        "title": "EV Map",
+        "description": "Update the TomTom API key and location entity.",
+        "data": {
+          "tomtom_api_key": "TomTom API Key",
+          "location_entity": "Location Entity (e.g. person.thiti)",
+          "mapbox_token": "Mapbox Token (optional)",
+          "radius": "Search Radius (meters)"
+        }
       }
     },
     "error": {
@@ -19,7 +29,8 @@
       "cannot_connect": "Cannot connect to TomTom API"
     },
     "abort": {
-      "already_configured": "EV Map is already configured"
+      "already_configured": "EV Map is already configured",
+      "reconfigure_successful": "EV Map settings updated"
     }
   }
 }

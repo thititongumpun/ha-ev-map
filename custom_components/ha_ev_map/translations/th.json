@@ -10,6 +10,16 @@
           "mapbox_token": "Mapbox Token (ไม่บังคับ)",
           "radius": "รัศมีค้นหา (เมตร)"
         }
+      },
+      "reconfigure": {
+        "title": "แผนที่ EV ไทย",
+        "description": "แก้ไข TomTom API key และ entity ตำแหน่ง",
+        "data": {
+          "tomtom_api_key": "TomTom API Key",
+          "location_entity": "Entity ตำแหน่ง (เช่น person.thiti)",
+          "mapbox_token": "Mapbox Token (ไม่บังคับ)",
+          "radius": "รัศมีค้นหา (เมตร)"
+        }
       }
     },
     "error": {
@@ -19,7 +29,8 @@
       "cannot_connect": "ไม่สามารถเชื่อมต่อ TomTom API"
     },
     "abort": {
-      "already_configured": "ตั้งค่าแผนที่ EV ไทยแล้ว"
+      "already_configured": "ตั้งค่าแผนที่ EV ไทยแล้ว",
+      "reconfigure_successful": "อัปเดตการตั้งค่าแผนที่ EV แล้ว"
     }
   }
 }

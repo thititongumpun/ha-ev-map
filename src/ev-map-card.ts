@@ -81,8 +81,8 @@ const MAP_STYLES: Array<{
   style: maplibregl.StyleSpecification | string | ((key: string) => string)
   pitch?: number
 }> = [
-  { id: 'orbis-driving', label: 'Driving', style: orbisStyle('basic_street-light-driving'), pitch: 0 },
-  { id: 'orbis-driving-dark', label: 'Driving Dark', style: orbisStyle('basic_street-dark-driving'), pitch: 0 },
+  { id: 'orbis-street', label: 'Street', style: orbisStyle('basic_street-light'), pitch: 0 },
+  { id: 'orbis-street-dark', label: 'Street Dark', style: orbisStyle('basic_street-dark'), pitch: 0 },
   { id: 'liberty', label: 'Liberty 3D', style: LIBERTY_STYLE_URL, pitch: 45 },
 ]
 
@@ -661,7 +661,7 @@ class EVMapCard extends HTMLElement {
   private _pitchToggle: HTMLDivElement | null = null
   private _trafficToggle: HTMLDivElement | null = null
   private _locateBtn: HTMLDivElement | null = null
-  private _activeStyleId = 'orbis-driving'
+  private _activeStyleId = 'orbis-street'
   private _pitchEnabled = false
   private _trafficEnabled = false
   private _tomtomKey: string | null = null

@@ -68,30 +68,8 @@ const ROUTE_ICON_SVG = `<svg width="13" height="13" viewBox="0 0 13 13" fill="no
 const THAILAND_CENTER: [number, number] = [100.523186, 13.736717]
 const DEFAULT_ASPECT_RATIO = '16:9'
 
-const CARTO_DARK_STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  sources: {
-    carto: {
-      type: 'raster',
-      tiles: [
-        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      ],
-      tileSize: 256,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    },
-  },
-  layers: [
-    {
-      id: 'carto',
-      type: 'raster',
-      source: 'carto',
-    },
-  ],
-}
+// Fallback until the TomTom key arrives from /config — Orbis styles can't render without it.
+const LIBERTY_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
 
 // TomTom Orbis styles need the API key, so they resolve lazily once /config lands.
 const orbisStyle = (map: string) => (key: string) =>
@@ -103,12 +81,9 @@ const MAP_STYLES: Array<{
   style: maplibregl.StyleSpecification | string | ((key: string) => string)
   pitch?: number
 }> = [
-  { id: 'default', label: 'Dark', style: CARTO_DARK_STYLE, pitch: 0 },
-  { id: 'openstreetmap', label: 'OpenStreetMap', style: 'https://tiles.openfreemap.org/styles/bright', pitch: 0 },
-  { id: 'liberty', label: 'Liberty 3D', style: 'https://tiles.openfreemap.org/styles/liberty', pitch: 45 },
-  { id: 'orbis', label: 'TomTom Orbis', style: orbisStyle('basic_street-light'), pitch: 0 },
-  { id: 'orbis-dark', label: 'TomTom Orbis Dark', style: orbisStyle('basic_street-dark'), pitch: 0 },
-  { id: 'orbis-satellite', label: 'TomTom Satellite', style: orbisStyle('basic_street-satellite'), pitch: 0 },
+  { id: 'orbis-driving', label: 'Driving', style: orbisStyle('basic_street-light-driving'), pitch: 0 },
+  { id: 'orbis-driving-dark', label: 'Driving Dark', style: orbisStyle('basic_street-dark-driving'), pitch: 0 },
+  { id: 'liberty', label: 'Liberty 3D', style: LIBERTY_STYLE_URL, pitch: 45 },
 ]
 
 const CARD_CSS = `
@@ -686,7 +661,7 @@ class EVMapCard extends HTMLElement {
   private _pitchToggle: HTMLDivElement | null = null
   private _trafficToggle: HTMLDivElement | null = null
   private _locateBtn: HTMLDivElement | null = null
-  private _activeStyleId = 'openstreetmap'
+  private _activeStyleId = 'orbis-driving'
   private _pitchEnabled = false
   private _trafficEnabled = false
   private _tomtomKey: string | null = null
@@ -1051,7 +1026,7 @@ class EVMapCard extends HTMLElement {
     const initialStyle = MAP_STYLES.find((s) => s.id === this._activeStyleId) ?? MAP_STYLES[0]
     this._map = new maplibregl.Map({
       container: this._mapContainer,
-      style: this._resolveStyle(initialStyle) ?? MAP_STYLES[0].style as maplibregl.StyleSpecification,
+      style: this._resolveStyle(initialStyle) ?? LIBERTY_STYLE_URL,
       center: THAILAND_CENTER,
       zoom: 10,
       pitch: initialStyle.pitch ?? 0,
@@ -1393,6 +1368,11 @@ class EVMapCard extends HTMLElement {
     try {
       const cfg = await this._hass.callApi('GET', 'ha_ev_map/config')
       this._tomtomKey = (cfg as { tomtom_key: string }).tomtom_key
+      // map booted on the fallback style — swap to the Orbis one now that the key is here
+      const entry = MAP_STYLES.find((s) => s.id === this._activeStyleId)
+      if (entry && typeof entry.style === 'function') {
+        this._setMapStyle(entry, entry.style(this._tomtomKey))
+      }
     } catch {
       // traffic stays disabled if config fetch fails
     }
@@ -1434,6 +1414,16 @@ class EVMapCard extends HTMLElement {
     if (this._map.getSource('tomtom-traffic')) this._map.removeSource('tomtom-traffic')
   }
 
+  private _setMapStyle(entry: (typeof MAP_STYLES)[number], style: maplibregl.StyleSpecification | string) {
+    if (!this._map) return
+    this._map.setStyle(style)
+    this._map.once('style.load', () => {
+      if (entry.pitch !== undefined) this._setPitch(entry.pitch > 0)
+      if (this._trafficEnabled) this._addTrafficLayer()
+      if (this._routeCoords) this._drawRoute(this._routeCoords)
+    })
+  }
+
   private _resolveStyle(entry: (typeof MAP_STYLES)[number]) {
     if (typeof entry.style !== 'function') return entry.style
     return this._tomtomKey ? entry.style(this._tomtomKey) : null
@@ -1446,12 +1436,7 @@ class EVMapCard extends HTMLElement {
     const style = this._resolveStyle(entry)
     if (!style) return // no TomTom key yet — keep current style
     this._activeStyleId = id
-    this._map.setStyle(style)
-    this._map.once('style.load', () => {
-      if (entry.pitch !== undefined) this._setPitch(entry.pitch > 0)
-      if (this._trafficEnabled) this._addTrafficLayer()
-      if (this._routeCoords) this._drawRoute(this._routeCoords)
-    })
+    this._setMapStyle(entry, style)
     if (this._stylePanel) {
       for (const el of this._stylePanel.querySelectorAll<HTMLElement>('.ev-style-option')) {
         el.classList.toggle('selected', el.dataset.styleId === id)

@@ -82,6 +82,7 @@ Home Assistant and browsers cache Lovelace module resources by URL. After updati
 - Fetches EV stations within the configured radius from TomTom and renders them as compact brand badges. Local logo files in `www/brand/` are matched by brand aliases, with initials as a fallback.
 - Auto-refreshes every 30 seconds.
 - Fullscreen button (top-right). Press `Esc` or click again to exit.
+- Clicking a station marker (or a station in the list) pings it with a short outline pulse alongside its popup.
 
 ### Map styles
 
@@ -109,6 +110,10 @@ A locate button flies the map camera back to your configured location entity ins
 
 A hamburger button (bottom-left) opens a collapsible panel listing all nearby stations with name, distance, and connectors. Click any entry to fly to that station on the map.
 
+### AC / DC filter
+
+A segmented control (bottom-left, next to the station list button) filters stations by charger current: **All**, **AC**, or **DC**. A station is kept when any of its connectors matches — CCS and CHAdeMO count as DC, Type 2 as AC, GB/T and Tesla by rated power (≥ 43 kW is DC). The filter applies to both the map markers and the station list, and persists across the 30-second auto-refresh.
+
 ### Routing
 
 Click the blue arrow button next to any station in the list (or in its popup) to:
@@ -131,7 +136,7 @@ The route line persists across map style switches.
 
 ## Connector types
 
-Stations are normalised from TomTom's raw strings into: `CCS`, `CHAdeMO`, `Type2`, `GBT`.
+Stations are normalised from TomTom's raw strings into: `CCS`, `CHAdeMO`, `Type2`, `GBT`, `Tesla`.
 
 ## Development
 

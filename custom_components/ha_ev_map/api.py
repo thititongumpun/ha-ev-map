@@ -35,6 +35,8 @@ def _to_connector_type(raw: str) -> str:
         return "CHAdeMO"
     if "gbt" in v or "20234" in v:
         return "GBT"
+    if "tesla" in v:
+        return "Tesla"
     return "Type2"
 
 

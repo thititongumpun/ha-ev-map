@@ -39,6 +39,18 @@ const STATUS_LABEL: Record<string, string> = {
   unknown: 'Unknown',
 }
 
+// TomTom's GB/T AC (part 2) and DC (part 3) both normalise to "GBT" in api.py — fall back to power.
+// Same for Tesla: Superchargers are DC high-power, wall/destination connectors are AC.
+const connectorCurrent = (c: Connector): 'AC' | 'DC' =>
+  c.type === 'CCS' ||
+  c.type === 'CHAdeMO' ||
+  ((c.type === 'GBT' || c.type === 'Tesla') && c.powerKW >= 43)
+    ? 'DC'
+    : 'AC'
+
+const CURRENT_FILTERS = ['all', 'AC', 'DC'] as const
+type CurrentFilter = (typeof CURRENT_FILTERS)[number]
+
 const BRAND_LOGOS: Array<{ path: string; aliases: string[] }> = [
   { path: 'brand/altervim.png', aliases: ['altervim'] },
   { path: 'brand/charge24.jpg', aliases: ['charge24', 'charge 24'] },
@@ -196,6 +208,14 @@ const CARD_CSS = `
     background: transparent !important;
     box-shadow: none !important;
   }
+  @keyframes ev-ping {
+    from { outline-color: rgba(59,130,246,0.9); outline-offset: 0; }
+    to { outline-color: rgba(59,130,246,0); outline-offset: 16px; }
+  }
+  .ev-map-marker-station.ev-ping {
+    outline: 3px solid transparent;
+    animation: ev-ping 0.9s ease-out 2;
+  }
   .ev-brand-logo {
     width: 100%;
     height: 100%;
@@ -227,6 +247,34 @@ const CARD_CSS = `
   }
   .ev-station-list-toggle:hover { background: rgba(30,41,59,0.97); }
   .ev-station-list-toggle.active { background: rgba(30,41,59,0.97); border-color: #64748b; }
+  .ev-filter {
+    position: absolute;
+    bottom: 10px;
+    left: 46px;
+    height: 30px;
+    display: flex;
+    align-items: stretch;
+    background: rgba(15,23,42,0.92);
+    border: 1px solid #334155;
+    border-radius: 4px;
+    overflow: hidden;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    user-select: none;
+  }
+  .ev-filter-opt {
+    display: flex;
+    align-items: center;
+    padding: 0 9px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #94a3b8;
+    cursor: pointer;
+    border-right: 1px solid #1e293b;
+  }
+  .ev-filter-opt:last-child { border-right: none; }
+  .ev-filter-opt:hover { color: #e2e8f0; }
+  .ev-filter-opt.active { background: rgba(30,41,59,0.97); color: #e2e8f0; }
   .ev-station-list {
     position: absolute;
     bottom: 48px;
@@ -669,6 +717,7 @@ class EVMapCard extends HTMLElement {
   private _routeStation: EVStation | null = null
   private _routeCoords: number[][] | null = null
   private _listOpen = false
+  private _currentFilter: CurrentFilter = 'all'
   private _initialized = false
   private _centeredOnLocation = false
   private _lastRenderedCenter: { lat: number; lon: number } | null = null
@@ -807,6 +856,21 @@ class EVMapCard extends HTMLElement {
         }
       })
 
+      const filter = document.createElement('div')
+      filter.className = 'ev-filter'
+      for (const value of CURRENT_FILTERS) {
+        const opt = document.createElement('div')
+        opt.className = 'ev-filter-opt' + (value === this._currentFilter ? ' active' : '')
+        opt.textContent = value === 'all' ? 'All' : value
+        opt.title = value === 'all' ? 'All chargers' : `${value} chargers only`
+        opt.addEventListener('click', () => {
+          this._currentFilter = value
+          for (const el of Array.from(filter.children)) el.classList.toggle('active', el === opt)
+          if (EVMapCard._cachedData) this._renderStations(EVMapCard._cachedData)
+        })
+        filter.appendChild(opt)
+      }
+
       const styleToggle = document.createElement('div')
       styleToggle.className = 'ev-style-toggle'
       styleToggle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1L12.5 4L7 7L1.5 4Z" stroke="#e2e8f0" stroke-width="1.2" stroke-linejoin="round" fill="none"/><path d="M1.5 7L7 10L12.5 7" stroke="#e2e8f0" stroke-width="1.2" stroke-linecap="round" fill="none"/><path d="M1.5 10L7 13L12.5 10" stroke="#e2e8f0" stroke-width="1.2" stroke-linecap="round" fill="none"/></svg>`
@@ -868,6 +932,7 @@ class EVMapCard extends HTMLElement {
       wrap.appendChild(mapContainer)
       wrap.appendChild(stationList)
       wrap.appendChild(toggle)
+      wrap.appendChild(filter)
       wrap.appendChild(stylePanel)
       wrap.appendChild(styleToggle)
       wrap.appendChild(pitchToggle)
@@ -1160,7 +1225,9 @@ class EVMapCard extends HTMLElement {
     }
     this._lastRenderedCenter = { lat: latitude, lon: longitude }
 
-    for (const station of data.stations) {
+    const stations = data.stations.filter((s) => this._matchesCurrentFilter(s))
+
+    for (const station of stations) {
       const color = this._stationMarkerColor(station)
       const marker = new maplibregl.Marker({
         element: this._createMarkerElement('station', color, station),
@@ -1173,11 +1240,12 @@ class EVMapCard extends HTMLElement {
           ),
         )
         .addTo(this._map)
+      marker.on('click', () => this._pingMarker(marker))
 
       this._stationMarkers.push(marker)
     }
 
-    this._currentStations = data.stations
+    this._currentStations = stations
     this._updateStationList()
   }
 
@@ -1230,6 +1298,13 @@ class EVMapCard extends HTMLElement {
     const words = text.match(/[A-Za-z0-9]+/g) ?? []
     if (words.length >= 2) return `${words[0]![0]}${words[1][0]}`.toUpperCase()
     return (words[0] ?? text).slice(0, 3).toUpperCase()
+  }
+
+  private _matchesCurrentFilter(station: EVStation) {
+    return (
+      this._currentFilter === 'all' ||
+      station.connectors.some((c) => connectorCurrent(c) === this._currentFilter)
+    )
   }
 
   private _stationMarkerColor(station: EVStation) {
@@ -1652,8 +1727,16 @@ class EVMapCard extends HTMLElement {
     const marker = this._stationMarkers[index]
     if (marker) {
       for (const m of this._stationMarkers) m.getPopup()?.remove()
-      setTimeout(() => marker.togglePopup(), 600)
+      setTimeout(() => { marker.togglePopup(); this._pingMarker(marker) }, 600)
     }
+  }
+
+  private _pingMarker(marker?: maplibregl.Marker) {
+    const el = marker?.getElement()
+    if (!el) return
+    el.classList.remove('ev-ping')
+    void el.offsetWidth // reflow so a repeat click restarts the animation
+    el.classList.add('ev-ping')
   }
 
   private _clearStationMarkers() {

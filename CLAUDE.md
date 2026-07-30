@@ -48,7 +48,7 @@ The TomTom API key never reaches the browser — it lives in the HA config entry
 
 ### Important constraints
 
-- **Connector normalisation** happens in `api.py:_to_connector_type()`. TomTom returns raw strings like `"IEC62196Type2CCS"`, `"Chademo"` — mapped to `"CCS"`, `"CHAdeMO"`, `"GBT"`, `"Type2"`.
+- **Connector normalisation** happens in `api.py:_to_connector_type()`. TomTom returns raw strings like `"IEC62196Type2CCS"`, `"Chademo"` — mapped to `"CCS"`, `"CHAdeMO"`, `"GBT"`, `"Type2"`, `"Tesla"`.
 - **TomTom does not return real-time availability** — all station statuses are `"unknown"` (teal markers).
 - **Stations without `chargingPark.connectors`** are filtered out in `api.py:_normalise()`.
 - **HA auth**: the card calls `hass.callApi(...)` which handles bearer tokens automatically. `EVMapStationsView` has `requires_auth = True`.

@@ -38,7 +38,7 @@ Copy `custom_components/ha_ev_map/` into your HA `config/custom_components/` dir
 3. Add the card JS as a Lovelace resource — **Settings → Dashboards → Resources → Add**:
 
    ```
-   URL:  /ha_ev_map/ev-map-card.js?v=0.5.0
+   URL:  /ha_ev_map/ev-map-card.js?v=0.5.1
    Type: JavaScript Module
    ```
 
@@ -69,6 +69,22 @@ entity: device_tracker.my_car
 aspect_ratio: "16:9"
 ```
 
+Show several cars on one map with `cars:`. Each car is drawn as a top-view silhouette (tinted with `color`, rotated by the entity's `course`/`heading`/`bearing`/`direction` attribute). The first car is the primary: stations and routing are searched around it. With more than one car a switcher appears above the AC/DC filter; tapping a car there or on the map makes it the primary and re-centers. Only the primary car gets stations.
+
+```yaml
+type: custom:ev-map-card
+cars:
+  - entity: device_tracker.omoda_c5
+    name: Omoda C5
+    color: "#f97316"
+  - entity: device_tracker.geely_ex2
+    name: Geely EX2
+    color: "#22c55e"
+aspect_ratio: "16:9"
+```
+
+`name` and `color` are optional (friendly name and a palette color are used). Plain strings work too: `cars: [device_tracker.a, device_tracker.b]`.
+
 Use `height` instead of `aspect_ratio` for a fixed-height map:
 
 ```yaml
@@ -79,7 +95,7 @@ height: 400
 Home Assistant and browsers cache Lovelace module resources by URL. After updating the card JavaScript, force a fresh copy by bumping the resource URL version query to the installed release version and hard-refreshing the browser:
 
 ```
-/ha_ev_map/ev-map-card.js?v=0.5.0
+/ha_ev_map/ev-map-card.js?v=0.5.1
 ```
 
 ## Features

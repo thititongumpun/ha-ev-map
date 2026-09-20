@@ -275,6 +275,46 @@ const CARD_CSS = `
   .ev-filter-opt:last-child { border-right: none; }
   .ev-filter-opt:hover { color: #e2e8f0; }
   .ev-filter-opt.active { background: rgba(30,41,59,0.97); color: #e2e8f0; }
+  .ev-map-marker-car {
+    width: 22px;
+    height: 40px;
+    border: none;
+    border-radius: 0;
+    background: none;
+    filter: drop-shadow(0 0 4px rgba(0,0,0,0.7));
+  }
+  .ev-map-marker-car svg { display: block; width: 100%; height: 100%; }
+  .ev-map-marker-car.active { filter: drop-shadow(0 0 7px currentColor); }
+  .ev-cars {
+    position: absolute;
+    bottom: 46px;
+    left: 10px;
+    height: 30px;
+    display: flex;
+    align-items: stretch;
+    background: rgba(15,23,42,0.92);
+    border: 1px solid #334155;
+    border-radius: 4px;
+    overflow: hidden;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    user-select: none;
+  }
+  .ev-cars-opt {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 9px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #94a3b8;
+    cursor: pointer;
+    border-right: 1px solid #1e293b;
+  }
+  .ev-cars-opt:last-child { border-right: none; }
+  .ev-cars-opt:hover { color: #e2e8f0; }
+  .ev-cars-opt.active { background: rgba(30,41,59,0.97); color: #e2e8f0; }
+  .ev-cars-dot { width: 8px; height: 8px; border-radius: 50%; }
   .ev-station-list {
     position: absolute;
     bottom: 48px;
@@ -688,6 +728,35 @@ const CARD_CSS = `
   }
 `
 
+interface CarConfig {
+  entity: string
+  name?: string
+  color?: string
+}
+
+const CAR_COLORS = ['#3b82f6', '#f97316', '#22c55e', '#a855f7', '#eab308']
+
+// Top-view car silhouette, nose up (heading 0 = north). Tinted via currentColor.
+const CAR_TOP_SVG =
+  '<svg viewBox="0 0 24 44" xmlns="http://www.w3.org/2000/svg">' +
+  '<path fill="currentColor" d="M6 4Q12 0 18 4L21 14V40Q21 43 18 43H6Q3 43 3 40V14Z"/>' +
+  '<path fill="rgba(15,23,42,0.6)" d="M6 12H18L19.5 19H4.5Z"/>' +
+  '<path fill="rgba(15,23,42,0.6)" d="M5 32H19L18 38H6Z"/>' +
+  '<rect fill="rgba(255,255,255,0.35)" x="7" y="21" width="10" height="9" rx="2"/>' +
+  '</svg>'
+
+function headingFromAttributes(attrs: Record<string, unknown> | undefined): number | null {
+  for (const key of ['course', 'heading', 'bearing', 'direction']) {
+    const v = Number(attrs?.[key])
+    if (Number.isFinite(v)) return ((v % 360) + 360) % 360
+  }
+  return null
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+}
+
 class EVMapCard extends HTMLElement {
   private _root: ShadowRoot
   private _hass: any = null
@@ -695,6 +764,9 @@ class EVMapCard extends HTMLElement {
   private _map: maplibregl.Map | null = null
   private _stationMarkers: maplibregl.Marker[] = []
   private _locationMarker: maplibregl.Marker | null = null
+  private _carMarkers = new Map<string, maplibregl.Marker>()
+  private _carsBar: HTMLDivElement | null = null
+  private _activeEntity: string | null = null
   private _refreshInterval: ReturnType<typeof setInterval> | null = null
   private _resizeObserver: ResizeObserver | null = null
   private _firstRenderFrame: number | null = null
@@ -741,6 +813,8 @@ class EVMapCard extends HTMLElement {
 
   setConfig(config: Record<string, unknown>) {
     this._config = config
+    const cars = this._cars()
+    if (!cars.some((c) => c.entity === this._activeEntity)) this._activeEntity = cars[0]?.entity ?? null
     this._updateCardLayout()
     if (this._map) {
       this._resizeMap('config update')
@@ -761,17 +835,77 @@ class EVMapCard extends HTMLElement {
       if (lat !== undefined && lon !== undefined && !this._positionUnchanged(lat, lon)) {
         this._fetchAndUpdate()
       }
+      this._renderCarMarkers()
+    }
+  }
+
+  /** Normalised `cars:` list; plain `entity:` is a one-car list. */
+  private _cars(): CarConfig[] {
+    const raw = this._config?.cars
+    if (Array.isArray(raw) && raw.length) {
+      return raw
+        .map((c) => (typeof c === 'string' ? { entity: c } : (c as CarConfig)))
+        .filter((c) => typeof c?.entity === 'string')
+        .map((c, i) => ({ ...c, color: c.color ?? CAR_COLORS[i % CAR_COLORS.length] }))
+    }
+    const single = this._config?.entity
+    return typeof single === 'string' ? [{ entity: single, color: CAR_COLORS[0] }] : []
+  }
+
+  private _selectCar(entity: string) {
+    if (entity === this._activeEntity) return
+    this._activeEntity = entity
+    this._centeredOnLocation = false
+    EVMapCard._cachedData = null
+    this._carsBar?.querySelectorAll<HTMLElement>('.ev-cars-opt').forEach((el) => {
+      el.classList.toggle('active', el.dataset.entity === entity)
+    })
+    this._renderCarMarkers()
+    this._fetchAndUpdate()
+  }
+
+  /** One rotating top-view car per configured entity, positioned straight from hass.states. */
+  private _renderCarMarkers() {
+    if (!this._map || !this._hass) return
+    const cars = this._cars()
+    const wanted = new Set(cars.map((c) => c.entity))
+    for (const [id, marker] of this._carMarkers) {
+      if (!wanted.has(id)) { marker.remove(); this._carMarkers.delete(id) }
+    }
+    for (const car of cars) {
+      const attrs = this._hass.states[car.entity]?.attributes
+      const lat = Number(attrs?.latitude)
+      const lon = Number(attrs?.longitude)
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue
+      const heading = headingFromAttributes(attrs) ?? 0
+      const name = car.name ?? attrs?.friendly_name ?? car.entity
+      let marker = this._carMarkers.get(car.entity)
+      if (!marker) {
+        const el = document.createElement('div')
+        el.className = 'ev-map-marker ev-map-marker-car'
+        el.innerHTML = CAR_TOP_SVG
+        el.addEventListener('click', () => this._selectCar(car.entity))
+        marker = new maplibregl.Marker({ element: el, anchor: 'center', rotationAlignment: 'map' })
+          .setPopup(new maplibregl.Popup({ className: 'ev-map-popup', closeButton: false }))
+          .addTo(this._map)
+        this._carMarkers.set(car.entity, marker)
+      }
+      const el = marker.getElement()
+      el.style.color = car.color!
+      el.title = name
+      el.classList.toggle('active', car.entity === this._activeEntity)
+      marker.getPopup()?.setHTML(`<strong style="color:#f1f5f9;">${escapeHtml(name)}</strong>`)
+      marker.setLngLat([lon, lat]).setRotation(heading)
     }
   }
 
   /** Static cache is shared across card instances; only trust it when built for the same configured entity. */
   private _cacheMatchesEntity(): boolean {
-    return !!EVMapCard._lastEntityId && (this._config?.entity ?? null) === EVMapCard._lastConfigEntity
+    return !!EVMapCard._lastEntityId && this._activeEntity === EVMapCard._lastConfigEntity
   }
 
   private _entityQuery(): string {
-    const entity = this._config?.entity
-    return entity ? `entity=${encodeURIComponent(String(entity))}` : ''
+    return this._activeEntity ? `entity=${encodeURIComponent(this._activeEntity)}` : ''
   }
 
   connectedCallback() {
@@ -803,6 +937,9 @@ class EVMapCard extends HTMLElement {
     this._clearStationMarkers()
     this._locationMarker?.remove()
     this._locationMarker = null
+    for (const m of this._carMarkers.values()) m.remove()
+    this._carMarkers.clear()
+    this._carsBar = null
     this._map?.remove()
     this._map = null
     this._wrap = null
@@ -880,6 +1017,26 @@ class EVMapCard extends HTMLElement {
           if (EVMapCard._cachedData) this._renderStations(EVMapCard._cachedData)
         })
         filter.appendChild(opt)
+      }
+
+      const cars = this._cars()
+      if (cars.length > 1) {
+        const bar = document.createElement('div')
+        bar.className = 'ev-cars'
+        for (const car of cars) {
+          const opt = document.createElement('div')
+          opt.className = 'ev-cars-opt' + (car.entity === this._activeEntity ? ' active' : '')
+          opt.dataset.entity = car.entity
+          const dot = document.createElement('span')
+          dot.className = 'ev-cars-dot'
+          dot.style.background = car.color!
+          opt.appendChild(dot)
+          opt.appendChild(document.createTextNode(car.name ?? this._hass?.states?.[car.entity]?.attributes?.friendly_name ?? car.entity))
+          opt.addEventListener('click', () => this._selectCar(car.entity))
+          bar.appendChild(opt)
+        }
+        this._carsBar = bar
+        wrap.appendChild(bar)
       }
 
       const styleToggle = document.createElement('div')
@@ -1193,7 +1350,7 @@ class EVMapCard extends HTMLElement {
       EVMapCard._cachedData = data
       EVMapCard._lastCenter = { lat: data.center.latitude, lon: data.center.longitude }
       EVMapCard._lastEntityId = data.center.entityId
-      EVMapCard._lastConfigEntity = (this._config?.entity as string | undefined) ?? null
+      EVMapCard._lastConfigEntity = this._activeEntity
       this._renderStations(data)
     } catch {
       // map stays visible if request fails
@@ -1209,7 +1366,11 @@ class EVMapCard extends HTMLElement {
 
     const { latitude, longitude, heading } = data.center
 
-    if (this._locationMarker) {
+    if (this._cars().length) {
+      this._locationMarker?.remove()
+      this._locationMarker = null
+      this._renderCarMarkers()
+    } else if (this._locationMarker) {
       this._locationMarker.setLngLat([longitude, latitude])
       this._updateLocationHeading(heading)
     } else {

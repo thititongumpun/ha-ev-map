@@ -18,6 +18,32 @@ def _location_heading(attributes: dict) -> float | None:
         return heading % 360
     return None
 
+LOCATION_DOMAINS = ("device_tracker", "person", "zone")
+
+
+def _resolve_location(view: HomeAssistantView, entry, request):
+    """Return (entity_id, state, lat, lon) or an error response.
+
+    Card may override the configured entity with ?entity=; domain allow-list
+    is the only check because the query param is user-supplied.
+    """
+    entity_id: str = request.query.get("entity") or entry.data[CONF_LOCATION_ENTITY]
+    if entity_id.split(".", 1)[0] not in LOCATION_DOMAINS:
+        return view.json_message("entity must be device_tracker/person/zone", 400)
+
+    state = view._hass.states.get(entity_id)
+    if not state:
+        return view.json_message(f"Entity {entity_id} not found", 404)
+
+    try:
+        lat = float(state.attributes["latitude"])
+        lon = float(state.attributes["longitude"])
+    except (KeyError, ValueError, TypeError):
+        return view.json_message(
+            f"Entity {entity_id} has no latitude/longitude attributes", 422
+        )
+    return entity_id, state, lat, lon
+
 
 class EVMapStationsView(HomeAssistantView):
     url = "/api/ha_ev_map/stations"
@@ -34,20 +60,12 @@ class EVMapStationsView(HomeAssistantView):
 
         entry = entries[0]
         api_key: str = entry.data[CONF_TOMTOM_API_KEY]
-        entity_id: str = entry.data[CONF_LOCATION_ENTITY]
         radius: int = int(entry.data.get(CONF_RADIUS, DEFAULT_RADIUS))
 
-        state = self._hass.states.get(entity_id)
-        if not state:
-            return self.json_message(f"Entity {entity_id} not found", 404)
-
-        try:
-            lat = float(state.attributes["latitude"])
-            lon = float(state.attributes["longitude"])
-        except (KeyError, ValueError, TypeError):
-            return self.json_message(
-                f"Entity {entity_id} has no latitude/longitude attributes", 422
-            )
+        loc = _resolve_location(self, entry, request)
+        if not isinstance(loc, tuple):
+            return loc
+        entity_id, state, lat, lon = loc
 
         try:
             session = async_get_clientsession(self._hass)
@@ -86,17 +104,11 @@ class EVMapRouteView(HomeAssistantView):
 
         entry = entries[0]
         api_key: str = entry.data[CONF_TOMTOM_API_KEY]
-        entity_id: str = entry.data[CONF_LOCATION_ENTITY]
 
-        state = self._hass.states.get(entity_id)
-        if not state:
-            return self.json_message(f"Entity {entity_id} not found", 404)
-
-        try:
-            origin_lat = float(state.attributes["latitude"])
-            origin_lon = float(state.attributes["longitude"])
-        except (KeyError, ValueError, TypeError):
-            return self.json_message("Entity has no lat/lon attributes", 422)
+        loc = _resolve_location(self, entry, request)
+        if not isinstance(loc, tuple):
+            return loc
+        _entity_id, _state, origin_lat, origin_lon = loc
 
         try:
             to_lat = float(request.query["to_lat"])

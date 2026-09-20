@@ -727,6 +727,7 @@ class EVMapCard extends HTMLElement {
   private static _cachedData: StationsResponse | null = null
   private static _lastCenter: { lat: number; lon: number } | null = null
   private static _lastEntityId: string | null = null
+  private static _lastConfigEntity: string | null = null
   private _fullscreenChangeHandler = () => {
     this._resizeMap('fullscreen change')
     requestAnimationFrame(() => this._resizeMap('fullscreen frame'))
@@ -754,13 +755,23 @@ class EVMapCard extends HTMLElement {
       this._scheduleMapInitialize()
     } else if (this._map) {
       this._resizeMap('hass update')
-      const state = EVMapCard._lastEntityId ? hass.states[EVMapCard._lastEntityId] : null
+      const state = this._cacheMatchesEntity() ? hass.states[EVMapCard._lastEntityId!] : null
       const lat = state?.attributes?.latitude
       const lon = state?.attributes?.longitude
       if (lat !== undefined && lon !== undefined && !this._positionUnchanged(lat, lon)) {
         this._fetchAndUpdate()
       }
     }
+  }
+
+  /** Static cache is shared across card instances; only trust it when built for the same configured entity. */
+  private _cacheMatchesEntity(): boolean {
+    return !!EVMapCard._lastEntityId && (this._config?.entity ?? null) === EVMapCard._lastConfigEntity
+  }
+
+  private _entityQuery(): string {
+    const entity = this._config?.entity
+    return entity ? `entity=${encodeURIComponent(String(entity))}` : ''
   }
 
   connectedCallback() {
@@ -1165,8 +1176,8 @@ class EVMapCard extends HTMLElement {
   private async _fetchAndUpdate() {
     if (!this._hass || this._fetching) return
 
-    if (EVMapCard._cachedData && EVMapCard._lastEntityId) {
-      const state = this._hass.states[EVMapCard._lastEntityId]
+    if (EVMapCard._cachedData && this._cacheMatchesEntity()) {
+      const state = this._hass.states[EVMapCard._lastEntityId!]
       const lat = state?.attributes?.latitude
       const lon = state?.attributes?.longitude
       if (lat !== undefined && lon !== undefined && this._positionUnchanged(lat, lon)) {
@@ -1177,10 +1188,12 @@ class EVMapCard extends HTMLElement {
 
     this._fetching = true
     try {
-      const data: StationsResponse = await this._hass.callApi('GET', 'ha_ev_map/stations')
+      const q = this._entityQuery()
+      const data: StationsResponse = await this._hass.callApi('GET', 'ha_ev_map/stations' + (q ? `?${q}` : ''))
       EVMapCard._cachedData = data
       EVMapCard._lastCenter = { lat: data.center.latitude, lon: data.center.longitude }
       EVMapCard._lastEntityId = data.center.entityId
+      EVMapCard._lastConfigEntity = (this._config?.entity as string | undefined) ?? null
       this._renderStations(data)
     } catch {
       // map stays visible if request fails
@@ -1531,7 +1544,7 @@ class EVMapCard extends HTMLElement {
     try {
       const data = await this._hass.callApi(
         'GET',
-        `ha_ev_map/route?to_lat=${station.lat}&to_lon=${station.lon}`,
+        `ha_ev_map/route?to_lat=${station.lat}&to_lon=${station.lon}` + (this._entityQuery() ? `&${this._entityQuery()}` : ''),
       ) as { distanceKm: number; durationMin: number; geojson: { type: string; coordinates: number[][] } }
       this._routeStation = station
       this._routeCoords = data.geojson.coordinates

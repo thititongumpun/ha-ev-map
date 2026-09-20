@@ -38,7 +38,7 @@ Copy `custom_components/ha_ev_map/` into your HA `config/custom_components/` dir
 3. Add the card JS as a Lovelace resource — **Settings → Dashboards → Resources → Add**:
 
    ```
-   URL:  /ha_ev_map/ev-map-card.js?v=0.3.8
+   URL:  /ha_ev_map/ev-map-card.js?v=0.5.0
    Type: JavaScript Module
    ```
 
@@ -61,6 +61,14 @@ type: custom:ev-map-card
 aspect_ratio: "16:9"
 ```
 
+Center the card on a different location entity than the one configured in the integration (e.g. one card per car). Any `device_tracker.*`, `person.*` or `zone.*` entity with lat/lon works; stations and routing use it as origin:
+
+```yaml
+type: custom:ev-map-card
+entity: device_tracker.my_car
+aspect_ratio: "16:9"
+```
+
 Use `height` instead of `aspect_ratio` for a fixed-height map:
 
 ```yaml
@@ -71,7 +79,7 @@ height: 400
 Home Assistant and browsers cache Lovelace module resources by URL. After updating the card JavaScript, force a fresh copy by bumping the resource URL version query to the installed release version and hard-refreshing the browser:
 
 ```
-/ha_ev_map/ev-map-card.js?v=0.3.8
+/ha_ev_map/ev-map-card.js?v=0.5.0
 ```
 
 ## Features

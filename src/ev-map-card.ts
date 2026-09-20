@@ -885,7 +885,9 @@ class EVMapCard extends HTMLElement {
         el.className = 'ev-map-marker ev-map-marker-car'
         el.innerHTML = CAR_TOP_SVG
         el.addEventListener('click', () => this._selectCar(car.entity))
+        // lngLat must be set before addTo: Marker._update reads it during the map render.
         marker = new maplibregl.Marker({ element: el, anchor: 'center', rotationAlignment: 'map' })
+          .setLngLat([lon, lat])
           .setPopup(new maplibregl.Popup({ className: 'ev-map-popup', closeButton: false }))
           .addTo(this._map)
         this._carMarkers.set(car.entity, marker)

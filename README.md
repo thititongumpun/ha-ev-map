@@ -38,7 +38,7 @@ Copy `custom_components/ha_ev_map/` into your HA `config/custom_components/` dir
 3. Add the card JS as a Lovelace resource — **Settings → Dashboards → Resources → Add**:
 
    ```
-   URL:  /ha_ev_map/ev-map-card.js?v=0.5.1
+   URL:  /ha_ev_map/ev-map-card.js?v=0.5.2
    Type: JavaScript Module
    ```
 
@@ -95,7 +95,7 @@ height: 400
 Home Assistant and browsers cache Lovelace module resources by URL. After updating the card JavaScript, force a fresh copy by bumping the resource URL version query to the installed release version and hard-refreshing the browser:
 
 ```
-/ha_ev_map/ev-map-card.js?v=0.5.1
+/ha_ev_map/ev-map-card.js?v=0.5.2
 ```
 
 ## Features
